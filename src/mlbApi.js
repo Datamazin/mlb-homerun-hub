@@ -373,6 +373,7 @@ export async function getHistoricalRecords(statType = 'homeRuns') {
       return {
         rank: index + 1,
         player,
+        personId: leader.person.id,
         team,
         teamId,
         statValue: statValue,

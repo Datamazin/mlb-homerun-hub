@@ -250,7 +250,20 @@ function App() {
                   {filteredHistory.map((row) => (
                     <tr key={`${row.player}-${row.year}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                       <td className="px-6 py-4 font-bold text-slate-400">{row.rank}</td>
-                      <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{row.player}</td>
+                      <td className="px-6 py-4 font-semibold">
+                        {row.personId ? (
+                          <a 
+                            href={`https://www.mlb.com/player/${row.personId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors underline decoration-transparent hover:decoration-current"
+                          >
+                            {row.player}
+                          </a>
+                        ) : (
+                          <span className="text-slate-900 dark:text-white">{row.player}</span>
+                        )}
+                      </td>
                       <td className="px-6 py-4 text-center">
                         <span className="inline-block bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-3 py-1 rounded-full font-bold">
                           {formatStatValue(row.statValue, selectedStat)}
