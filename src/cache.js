@@ -1,7 +1,7 @@
 // Simple localStorage-based cache with TTL
 // Optimizes API calls by caching responses with time-to-live
 
-const CACHE_PREFIX = 'mlb_hr_hub_';
+const CACHE_PREFIX = 'mlb_stats_hub_v2_'; // v2 - includes personId in all records
 const DEFAULT_TTL = 60 * 60 * 1000; // 1 hour in milliseconds
 
 /**

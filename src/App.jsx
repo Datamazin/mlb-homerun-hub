@@ -79,14 +79,15 @@ function App() {
             const batchPromises = batch.map(player =>
               getPlayerTrajectory(player.id, trajectoryYears).then(data => ({
                 name: player.name,
+                id: player.id,
                 data
               }))
             );
             
             const results = await Promise.all(batchPromises);
-            results.forEach(({ name, data }) => {
+            results.forEach(({ name, id, data }) => {
               if (data.length > 0) {
-                trajectories[name] = data;
+                trajectories[name] = { data, id };
               }
             });
           }
@@ -386,18 +387,26 @@ function App() {
             {trajectoriesLoaded && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {Object.entries(playerTrajectories)
-              .map(([name, data]) => ({
+              .map(([name, { data, id }]) => ({
                 name,
+                id,
                 data,
                 total: data.reduce((sum, d) => sum + d.hr, 0)
               }))
               .sort((a, b) => b.total - a.total)
-              .map(({ name, data, total }) => {
+              .map(({ name, id, data, total }) => {
               const maxHR = Math.max(...data.map(d => d.hr));
               return (
                 <div key={name} className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 flex flex-col">
                   <div className="flex items-center justify-between mb-8">
-                    <h3 className="font-bold text-lg">{name}</h3>
+                    <a 
+                      href={`https://www.mlb.com/player/${id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-bold text-lg text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors underline decoration-transparent hover:decoration-current"
+                    >
+                      {name}
+                    </a>
                     <span className="text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 px-2 py-1 rounded uppercase tracking-wider">Historical Trend</span>
                   </div>
                   
