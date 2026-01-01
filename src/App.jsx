@@ -25,7 +25,7 @@ function App() {
         setHistoricalRecords(historical);
 
         // Fetch season leaders for last 10 years (dynamic)
-        const leaders = await getMultipleSeasonLeaders();
+        const leaders = await getMultipleSeasonLeaders(getLastNSeasons(10));
         setSeasonLeaders(leaders);
 
         // Fetch active career leader
@@ -171,6 +171,7 @@ function App() {
                     <th className="px-6 py-4">Player</th>
                     <th className="px-6 py-4 text-center">HR</th>
                     <th className="px-6 py-4">Team</th>
+                    <th className="px-6 py-4">Logo</th>
                     <th className="px-6 py-4">Year</th>
                     <th className="px-6 py-4">Status</th>
                   </tr>
@@ -186,6 +187,16 @@ function App() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{row.team}</td>
+                      <td className="px-6 py-4">
+                        {row.teamId && (
+                          <img 
+                            src={`https://www.mlbstatic.com/team-logos/${row.teamId}.svg`}
+                            alt={`${row.team} logo`}
+                            className="w-8 h-8 object-contain"
+                            onError={(e) => e.target.style.display = 'none'}
+                          />
+                        )}
+                      </td>
                       <td className="px-6 py-4 font-mono">{row.year}</td>
                       <td className="px-6 py-4">
                         <span className="text-xs font-medium px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
@@ -220,9 +231,26 @@ function App() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {(seasonLeaders[selectedSeason] || []).map((leader, i) => (
                 <div key={leader.player} className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                    <Trophy size={60} />
-                  </div>
+                  {leader.teamId && (
+                    <div className="absolute top-4 right-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                      <img
+                        src={`https://www.mlbstatic.com/team-logos/${leader.teamId}.svg`}
+                        alt={`${leader.team} logo`}
+                        className="w-16 h-16 object-contain"
+                        onError={(e) => e.target.style.display = 'none'}
+                      />
+                    </div>
+                  )}
+                  {leader.personId && (
+                    <div className="flex justify-center mb-3">
+                      <img
+                        src={`https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${leader.personId}/headshot/67/current`}
+                        alt={leader.player}
+                        className="w-[100px] h-[150px] object-cover border-4 border-white dark:border-slate-800 shadow-lg"
+                        onError={(e) => e.target.style.display = 'none'}
+                      />
+                    </div>
+                  )}
                   <p className="text-sm font-bold text-slate-400 mb-1">#{i + 1} {leader.league}</p>
                   <h3 className="text-lg font-bold mb-2">{leader.player}</h3>
                   <div className="flex items-end justify-between">

@@ -2,6 +2,17 @@
 // Base URL for MLB Stats API
 const BASE_URL = 'https://statsapi.mlb.com/api/v1';
 
+// MLB Team ID to Abbreviation mapping
+// Source: https://statsapi.mlb.com/api/v1/teams
+const TEAM_ABBREVIATIONS = {
+  108: 'LAA', 109: 'ARI', 110: 'BAL', 111: 'BOS', 112: 'CHC',
+  113: 'CIN', 114: 'CLE', 115: 'COL', 116: 'DET', 117: 'HOU',
+  118: 'KC',  119: 'LAD', 120: 'WSH', 121: 'NYM', 133: 'OAK',
+  134: 'PIT', 135: 'SD',  136: 'SEA', 137: 'SF',  138: 'STL',
+  139: 'TB',  140: 'TEX', 141: 'TOR', 142: 'MIN', 143: 'PHI',
+  144: 'ATL', 145: 'CWS', 146: 'MIA', 147: 'NYY', 158: 'MIL'
+};
+
 /**
  * Get the current baseball season year
  * If current month is Jan-Apr, use previous year (offseason)
@@ -33,18 +44,26 @@ export function getLastNSeasons(n = 10) {
 export async function getSeasonLeaders(season) {
   try {
     const response = await fetch(
-      `${BASE_URL}/stats/leaders?leaderCategories=homeRuns&season=${season}&statGroup=hitting&limit=10&leaderGameTypes=R&sportId=1`
+      `${BASE_URL}/stats/leaders?leaderCategories=homeRuns&season=${season}&statGroup=hitting&limit=16&leaderGameTypes=R&sportId=1`
     );
     const data = await response.json();
     
     if (!data.leagueLeaders?.[0]?.leaders) return [];
     
-    return data.leagueLeaders[0].leaders.map(leader => ({
-      player: leader.person.fullName,
-      team: leader.team.abbreviation || leader.team.name?.substring(0, 3).toUpperCase(),
-      hr: parseInt(leader.value),
-      league: leader.league?.abbreviation || 'MLB'
-    }));
+    return data.leagueLeaders[0].leaders.map(leader => {
+      // Use team ID mapping for accurate abbreviations (NYY, NYM, etc.)
+      const teamAbbr = TEAM_ABBREVIATIONS[leader.team?.id] || 
+                       leader.team?.name?.substring(0, 3).toUpperCase();
+      
+      return {
+        player: leader.person.fullName,
+        personId: leader.person.id,
+        team: teamAbbr,
+        teamId: leader.team?.id,
+        hr: parseInt(leader.value),
+        league: leader.league?.abbreviation || 'MLB'
+      };
+    });
   } catch (error) {
     console.error(`Error fetching ${season} season leaders:`, error);
     return [];
@@ -62,7 +81,7 @@ export async function getMultipleSeasonLeaders(seasons = null) {
   for (const season of seasonsToFetch) {
     const leaders = await getSeasonLeaders(season);
     if (leaders.length > 0) {
-      results[season] = leaders.slice(0, 4); // Top 4 per season
+      results[season] = leaders.slice(0, 16); // Top 16 per season
     }
   }
   
@@ -237,7 +256,8 @@ export async function getHistoricalRecords() {
       const year = leader.season ? parseInt(leader.season) : null;
       const hr = parseInt(leader.value);
       const player = leader.person.fullName;
-      const team = leader.team.abbreviation || leader.team.name?.substring(0, 3).toUpperCase();
+      const teamId = leader.team?.id;
+      const team = TEAM_ABBREVIATIONS[teamId] || leader.team?.name?.substring(0, 3).toUpperCase();
       
       // Determine status based on ranking and other criteria
       let status = '';
@@ -261,6 +281,7 @@ export async function getHistoricalRecords() {
         rank: index + 1,
         player,
         team,
+        teamId,
         hr,
         year,
         status
@@ -270,7 +291,7 @@ export async function getHistoricalRecords() {
     console.error('Error fetching historical records:', error);
     // Fallback to hardcoded data if API fails
     return [
-      { rank: 1, player: "Barry Bonds", team: "SFG", hr: 73, year: 2001, status: "All-Time Record" },
+      { rank: 1, player: "Barry Bonds", team: "SFG", teamId: 137, hr: 73, year: 2001, status: "All-Time Record" },
       { rank: 2, player: "Mark McGwire", team: "STL", hr: 70, year: 1998, status: "NL Record (Former)" },
       { rank: 3, player: "Sammy Sosa", team: "CHC", hr: 66, year: 1998, status: "Active Era" },
       { rank: 4, player: "Mark McGwire", team: "STL", hr: 65, year: 1999, status: "Active Era" },

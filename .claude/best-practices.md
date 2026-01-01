@@ -7,7 +7,7 @@ This document outlines the best practices, patterns, and lessons learned while b
 **MLB Stats API Documentation:**
 - Official API: https://statsapi.mlb.com/api/v1
 - Python Wrapper & Guide: https://github.com/toddrob99/MLB-StatsAPI
-- Endpoint Explorer: https://statsapi.mlb.com/docs/
+- Endpoint Explorer: https://github.com/toddrob99/MLB-StatsAPI/wiki
 
 ## Project Architecture
 
