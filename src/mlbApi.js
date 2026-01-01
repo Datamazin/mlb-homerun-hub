@@ -329,7 +329,9 @@ export async function getHistoricalRecords(statType = 'homeRuns') {
 
   return cachedFetch(`historical_records_${statType}`, async () => {
     try {
-      // Fetch all-time single season leaders
+      // Note: MLB API's statsSingleSeason doesn't work well for all stats
+      // For home runs it works, but for hits/other stats it may return career totals
+      // This is a known API limitation
       const response = await fetch(
         `${BASE_URL}/stats/leaders?leaderCategories=${stat.apiParam}&statType=statsSingleSeason&limit=10&sportId=1`
       );
@@ -337,10 +339,21 @@ export async function getHistoricalRecords(statType = 'homeRuns') {
     
     if (!data.leagueLeaders?.[0]?.leaders) {
       console.error('No historical leaders data found');
-      return [];
+      return getHistoricalRecordsFallback(statType);
     }
     
     const leaders = data.leagueLeaders[0].leaders;
+    
+    // Validate data - check if values seem reasonable for single season
+    const firstValue = leaders[0] ? parseFloat(leaders[0].value) : 0;
+    
+    // If hits > 300 or RBI > 200, likely getting career stats instead of season
+    if ((statType === 'hits' && firstValue > 300) || 
+        (statType === 'rbi' && firstValue > 200) ||
+        (statType === 'stolenBases' && firstValue > 150)) {
+      console.warn(`API returning unrealistic ${statType} values - using fallback data`);
+      return getHistoricalRecordsFallback(statType);
+    }
     
     // Map and determine status for each record
     return leaders.map((leader, index) => {
@@ -386,20 +399,79 @@ export async function getHistoricalRecords(statType = 'homeRuns') {
     });
   } catch (error) {
     console.error('Error fetching historical records:', error);
-    // Fallback to hardcoded data if API fails
-    return [
-      { rank: 1, player: "Barry Bonds", team: "SFG", teamId: 137, hr: 73, year: 2001, status: "All-Time Record" },
-      { rank: 2, player: "Mark McGwire", team: "STL", hr: 70, year: 1998, status: "NL Record (Former)" },
-      { rank: 3, player: "Sammy Sosa", team: "CHC", hr: 66, year: 1998, status: "Active Era" },
-      { rank: 4, player: "Mark McGwire", team: "STL", hr: 65, year: 1999, status: "Active Era" },
-      { rank: 5, player: "Sammy Sosa", team: "CHC", hr: 64, year: 2001, status: "Active Era" },
-      { rank: 6, player: "Sammy Sosa", team: "CHC", hr: 63, year: 1999, status: "Active Era" },
-      { rank: 7, player: "Aaron Judge", team: "NYY", hr: 62, year: 2022, status: "AL Record" },
-      { rank: 8, player: "Roger Maris", team: "NYY", hr: 61, year: 1961, status: "AL Record (Former)" },
-      { rank: 9, player: "Babe Ruth", team: "NYY", hr: 60, year: 1927, status: "Historical Legend" }
-    ];
+    return getHistoricalRecordsFallback(statType);
     }
   }, 24 * 60 * 60 * 1000); // Cache for 24 hours (historical data doesn't change)
+}
+
+/**
+ * Fallback historical records data when API fails or returns incorrect data
+ * @param {string} statType - The stat type key
+ */
+function getHistoricalRecordsFallback(statType) {
+  const stat = STAT_TYPES[statType];
+  
+  const fallbackData = {
+    homeRuns: [
+      { rank: 1, player: "Barry Bonds", personId: 111188, team: "SF", teamId: 137, statValue: 73, year: 2001, status: "All-Time Record" },
+      { rank: 2, player: "Mark McGwire", personId: 118219, team: "STL", teamId: 138, statValue: 70, year: 1998, status: "NL Record (Former)" },
+      { rank: 3, player: "Sammy Sosa", personId: 121471, team: "CHC", teamId: 112, statValue: 66, year: 1998, status: "Active Era" },
+      { rank: 4, player: "Mark McGwire", personId: 118219, team: "STL", teamId: 138, statValue: 65, year: 1999, status: "Active Era" },
+      { rank: 5, player: "Sammy Sosa", personId: 121471, team: "CHC", teamId: 112, statValue: 64, year: 2001, status: "Active Era" },
+      { rank: 6, player: "Sammy Sosa", personId: 121471, team: "CHC", teamId: 112, statValue: 63, year: 1999, status: "Active Era" },
+      { rank: 7, player: "Aaron Judge", personId: 592450, team: "NYY", teamId: 147, statValue: 62, year: 2022, status: "AL Record" },
+      { rank: 8, player: "Roger Maris", personId: 118140, team: "NYY", teamId: 147, statValue: 61, year: 1961, status: "AL Record (Former)" },
+      { rank: 9, player: "Babe Ruth", personId: 121093, team: "NYY", teamId: 147, statValue: 60, year: 1927, status: "Historical Legend" }
+    ],
+    hits: [
+      { rank: 1, player: "Ichiro Suzuki", personId: 400085, team: "SEA", teamId: 136, statValue: 262, year: 2004, status: "All-Time Record" },
+      { rank: 2, player: "George Sisler", personId: 121365, team: "STL", teamId: 138, statValue: 257, year: 1920, status: "Historic Record" },
+      { rank: 3, player: "Lefty O'Doul", personId: 118666, team: "PHI", teamId: 143, statValue: 254, year: 1929, status: "Historic Record" },
+      { rank: 4, player: "Bill Terry", personId: 122043, team: "NYG", teamId: 137, statValue: 254, year: 1930, status: "Historic Record" },
+      { rank: 5, player: "Al Simmons", personId: 121352, team: "PHI", teamId: 143, statValue: 253, year: 1925, status: "Historic Record" },
+      { rank: 6, player: "Rogers Hornsby", personId: 116511, team: "STL", teamId: 138, statValue: 250, year: 1922, status: "Historic Record" },
+      { rank: 7, player: "Chuck Klein", personId: 117137, team: "PHI", teamId: 143, statValue: 250, year: 1930, status: "Historic Record" },
+      { rank: 8, player: "Ty Cobb", personId: 112935, team: "DET", teamId: 116, statValue: 248, year: 1911, status: "Historical Legend" }
+    ],
+    rbi: [
+      { rank: 1, player: "Hack Wilson", personId: 123160, team: "CHC", teamId: 112, statValue: 191, year: 1930, status: "All-Time Record" },
+      { rank: 2, player: "Lou Gehrig", personId: 115167, team: "NYY", teamId: 147, statValue: 185, year: 1931, status: "Historical Legend" },
+      { rank: 3, player: "Hank Greenberg", personId: 115600, team: "DET", teamId: 116, statValue: 183, year: 1937, status: "Historic Record" },
+      { rank: 4, player: "Lou Gehrig", personId: 115167, team: "NYY", teamId: 147, statValue: 174, year: 1927, status: "Historical Legend" },
+      { rank: 5, player: "Jimmie Foxx", personId: 114945, team: "BOS", teamId: 111, statValue: 175, year: 1938, status: "Historic Record" },
+      { rank: 6, player: "Lou Gehrig", personId: 115167, team: "NYY", teamId: 147, statValue: 173, year: 1930, status: "Historical Legend" },
+      { rank: 7, player: "Babe Ruth", personId: 121093, team: "NYY", teamId: 147, statValue: 171, year: 1921, status: "Historical Legend" },
+      { rank: 8, player: "Sammy Sosa", personId: 121471, team: "CHC", teamId: 112, statValue: 160, year: 2001, status: "Modern Era" }
+    ],
+    stolenBases: [
+      { rank: 1, player: "Hugh Nicol", personId: 118617, team: "CIN", teamId: 113, statValue: 138, year: 1887, status: "All-Time Record" },
+      { rank: 2, player: "Rickey Henderson", personId: 116282, team: "OAK", teamId: 133, statValue: 130, year: 1982, status: "Modern Record" },
+      { rank: 3, player: "Arlie Latham", personId: 117607, team: "STL", teamId: 138, statValue: 129, year: 1887, status: "Historic Record" },
+      { rank: 4, player: "Lou Brock", personId: 111979, team: "STL", teamId: 138, statValue: 118, year: 1974, status: "Historic Record" },
+      { rank: 5, player: "Charlie Comiskey", personId: 113093, team: "STL", teamId: 138, statValue: 117, year: 1887, status: "Historic Record" },
+      { rank: 6, player: "Rickey Henderson", personId: 116282, team: "OAK", teamId: 133, statValue: 108, year: 1983, status: "Modern Record" },
+      { rank: 7, player: "Vince Coleman", personId: 113045, team: "STL", teamId: 138, statValue: 110, year: 1985, status: "Modern Era" },
+      { rank: 8, player: "Vince Coleman", personId: 113045, team: "STL", teamId: 138, statValue: 109, year: 1987, status: "Modern Era" }
+    ],
+    battingAverage: [
+      { rank: 1, player: "Hugh Duffy", personId: 114358, team: "BOS", teamId: 111, statValue: 0.440, year: 1894, status: "All-Time Record" },
+      { rank: 2, player: "Tip O'Neill", personId: 118664, team: "STL", teamId: 138, statValue: 0.435, year: 1887, status: "Historic Record" },
+      { rank: 3, player: "Pete Browning", personId: 112059, team: "LOU", teamId: 0, statValue: 0.457, year: 1887, status: "Historic Record" },
+      { rank: 4, player: "Willie Keeler", personId: 117023, team: "BAL", teamId: 110, statValue: 0.424, year: 1897, status: "Historic Record" },
+      { rank: 5, player: "Rogers Hornsby", personId: 116511, team: "STL", teamId: 138, statValue: 0.424, year: 1924, status: "Historic Record" },
+      { rank: 6, player: "Nap Lajoie", personId: 117552, team: "PHI", teamId: 143, statValue: 0.426, year: 1901, status: "Historic Record" },
+      { rank: 7, player: "George Sisler", personId: 121365, team: "STL", teamId: 138, statValue: 0.420, year: 1922, status: "Historic Record" },
+      { rank: 8, player: "Ty Cobb", personId: 112935, team: "DET", teamId: 116, statValue: 0.420, year: 1911, status: "Historical Legend" }
+    ]
+  };
+
+  const records = fallbackData[statType] || fallbackData.homeRuns;
+  
+  return records.map(record => ({
+    ...record,
+    statType: stat,
+    hr: statType === 'homeRuns' ? record.statValue : undefined
+  }));
 }
 
 /**
