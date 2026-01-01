@@ -6,6 +6,7 @@ const BASE_URL = 'https://statsapi.mlb.com/api/v1';
 
 // Stat Types Configuration
 export const STAT_TYPES = {
+  // Batting Stats
   homeRuns: {
     key: 'homeRuns',
     label: 'Home Runs',
@@ -50,6 +51,54 @@ export const STAT_TYPES = {
     category: 'hitting',
     color: 'red',
     format: (val) => val.toFixed(3)
+  },
+  // Pitching Stats
+  earnedRunAverage: {
+    key: 'earnedRunAverage',
+    label: 'Earned Run Average',
+    abbr: 'ERA',
+    apiParam: 'earnedRunAverage',
+    category: 'pitching',
+    color: 'blue',
+    format: (val) => val.toFixed(2),
+    lowerIsBetter: true
+  },
+  strikeouts: {
+    key: 'strikeouts',
+    label: 'Strikeouts',
+    abbr: 'K',
+    apiParam: 'strikeOuts',
+    category: 'pitching',
+    color: 'purple',
+    format: (val) => Math.round(val)
+  },
+  wins: {
+    key: 'wins',
+    label: 'Wins',
+    abbr: 'W',
+    apiParam: 'wins',
+    category: 'pitching',
+    color: 'green',
+    format: (val) => Math.round(val)
+  },
+  saves: {
+    key: 'saves',
+    label: 'Saves',
+    abbr: 'SV',
+    apiParam: 'saves',
+    category: 'pitching',
+    color: 'orange',
+    format: (val) => Math.round(val)
+  },
+  whip: {
+    key: 'whip',
+    label: 'WHIP',
+    abbr: 'WHIP',
+    apiParam: 'whip',
+    category: 'pitching',
+    color: 'red',
+    format: (val) => val.toFixed(3),
+    lowerIsBetter: true
   }
 };
 
@@ -340,9 +389,14 @@ export async function getHistoricalRecords(statType = 'homeRuns') {
 
   return cachedFetch(`historical_records_${statType}`, async () => {
     try {
-      // Note: MLB API's statsSingleSeason doesn't work well for all stats
-      // For home runs it works, but for hits/other stats it may return career totals
-      // This is a known API limitation
+      // Note: MLB API's statsSingleSeason is unreliable for some stats
+      // Always use fallback for non-home run stats
+      const unreliableStats = ['hits', 'rbi', 'stolenBases', 'battingAverage', 'earnedRunAverage', 'strikeouts', 'wins', 'saves', 'whip'];
+      if (unreliableStats.includes(statType)) {
+        console.log(`Using fallback data for ${statType} - API unreliable`);
+        return getHistoricalRecordsFallback(statType);
+      }
+      
       const response = await fetch(
         `${BASE_URL}/stats/leaders?leaderCategories=${stat.apiParam}&statType=statsSingleSeason&limit=10&sportId=1`
       );
@@ -473,6 +527,56 @@ function getHistoricalRecordsFallback(statType) {
       { rank: 6, player: "Nap Lajoie", personId: 117552, team: "PHI", teamId: 143, statValue: 0.426, year: 1901, status: "Historic Record" },
       { rank: 7, player: "George Sisler", personId: 121365, team: "STL", teamId: 138, statValue: 0.420, year: 1922, status: "Historic Record" },
       { rank: 8, player: "Ty Cobb", personId: 112935, team: "DET", teamId: 116, statValue: 0.420, year: 1911, status: "Historical Legend" }
+    ],
+    earnedRunAverage: [
+      { rank: 1, player: "Dutch Leonard", personId: 117683, team: "BOS", teamId: 111, statValue: 0.96, year: 1914, status: "All-Time Record" },
+      { rank: 2, player: "Mordecai Brown", personId: 112063, team: "CHC", teamId: 112, statValue: 1.04, year: 1906, status: "Dead Ball Era" },
+      { rank: 3, player: "Bob Gibson", personId: 115178, team: "STL", teamId: 138, statValue: 1.12, year: 1968, status: "Expansion Era" },
+      { rank: 4, player: "Christy Mathewson", personId: 118161, team: "NYG", teamId: 137, statValue: 1.14, year: 1909, status: "Dead Ball Era" },
+      { rank: 5, player: "Walter Johnson", personId: 116911, team: "WSH", teamId: 120, statValue: 1.14, year: 1913, status: "Dead Ball Era" },
+      { rank: 6, player: "Jack Pfiester", personId: 119261, team: "CHC", teamId: 112, statValue: 1.15, year: 1907, status: "Dead Ball Era" },
+      { rank: 7, player: "Addie Joss", personId: 116922, team: "CLE", teamId: 114, statValue: 1.16, year: 1908, status: "Dead Ball Era" },
+      { rank: 8, player: "Carl Lundgren", personId: 117981, team: "CHC", teamId: 112, statValue: 1.17, year: 1907, status: "Dead Ball Era" }
+    ],
+    strikeouts: [
+      { rank: 1, player: "Nolan Ryan", personId: 121188, team: "CAL", teamId: 108, statValue: 383, year: 1973, status: "All-Time Record" },
+      { rank: 2, player: "Sandy Koufax", personId: 117251, team: "LAD", teamId: 119, statValue: 382, year: 1965, status: "Expansion Era" },
+      { rank: 3, player: "Randy Johnson", personId: 116539, team: "ARI", teamId: 109, statValue: 372, year: 2001, status: "Modern Era" },
+      { rank: 4, player: "Nolan Ryan", personId: 121188, team: "CAL", teamId: 108, statValue: 367, year: 1974, status: "Expansion Era" },
+      { rank: 5, player: "Randy Johnson", personId: 116539, team: "ARI", teamId: 109, statValue: 364, year: 1999, status: "Contemporary Era" },
+      { rank: 6, player: "Nolan Ryan", personId: 121188, team: "HOU", teamId: 117, statValue: 341, year: 1987, status: "Expansion Era" },
+      { rank: 7, player: "Nolan Ryan", personId: 121188, team: "TEX", teamId: 140, statValue: 332, year: 1989, status: "Contemporary Era" },
+      { rank: 8, player: "Curt Schilling", personId: 121213, team: "ARI", teamId: 109, statValue: 319, year: 2002, status: "Recent Record" }
+    ],
+    wins: [
+      { rank: 1, player: "Jack Chesbro", personId: 112725, team: "NYY", teamId: 147, statValue: 41, year: 1904, status: "All-Time Record" },
+      { rank: 2, player: "Ed Walsh", personId: 123092, team: "CWS", teamId: 145, statValue: 40, year: 1908, status: "Dead Ball Era" },
+      { rank: 3, player: "Christy Mathewson", personId: 118161, team: "NYG", teamId: 137, statValue: 37, year: 1908, status: "Dead Ball Era" },
+      { rank: 4, player: "Walter Johnson", personId: 116911, team: "WSH", teamId: 120, statValue: 36, year: 1913, status: "Dead Ball Era" },
+      { rank: 5, player: "Joe McGinnity", personId: 118223, team: "NYG", teamId: 137, statValue: 35, year: 1904, status: "Dead Ball Era" },
+      { rank: 6, player: "Smoky Joe Wood", personId: 123172, team: "BOS", teamId: 111, statValue: 34, year: 1912, status: "Dead Ball Era" },
+      { rank: 7, player: "Cy Young", personId: 124156, team: "BOS", teamId: 111, statValue: 33, year: 1901, status: "Dead Ball Era" },
+      { rank: 8, player: "Denny McLain", personId: 118207, team: "DET", teamId: 116, statValue: 31, year: 1968, status: "Expansion Era" }
+    ],
+    saves: [
+      { rank: 1, player: "Francisco Rodríguez", personId: 121359, team: "LAA", teamId: 108, statValue: 62, year: 2008, status: "All-Time Record" },
+      { rank: 2, player: "Bobby Thigpen", personId: 122045, team: "CWS", teamId: 145, statValue: 57, year: 1990, status: "Contemporary Era" },
+      { rank: 3, player: "John Smoltz", personId: 121371, team: "ATL", teamId: 144, statValue: 55, year: 2002, status: "Recent Record" },
+      { rank: 4, player: "Eric Gagné", personId: 115030, team: "LAD", teamId: 119, statValue: 55, year: 2003, status: "Recent Record" },
+      { rank: 5, player: "Dennis Eckersley", personId: 114404, team: "OAK", teamId: 133, statValue: 51, year: 1992, status: "Contemporary Era" },
+      { rank: 6, player: "Trevor Hoffman", personId: 116440, team: "SD", teamId: 135, statValue: 53, year: 1998, status: "Contemporary Era" },
+      { rank: 7, player: "Randy Myers", personId: 118640, team: "CHC", teamId: 112, statValue: 53, year: 1993, status: "Contemporary Era" },
+      { rank: 8, player: "Mariano Rivera", personId: 121250, team: "NYY", teamId: 147, statValue: 53, year: 2004, status: "Recent Record" }
+    ],
+    whip: [
+      { rank: 1, player: "Pedro Martínez", personId: 118173, team: "BOS", teamId: 111, statValue: 0.737, year: 2000, status: "All-Time Record" },
+      { rank: 2, player: "Guy Hecker", personId: 116184, team: "LOU", teamId: 0, statValue: 0.808, year: 1882, status: "Historic Record" },
+      { rank: 3, player: "Walter Johnson", personId: 116911, team: "WSH", teamId: 120, statValue: 0.780, year: 1913, status: "Dead Ball Era" },
+      { rank: 4, player: "Pedro Martínez", personId: 118173, team: "BOS", teamId: 111, statValue: 0.791, year: 1999, status: "Contemporary Era" },
+      { rank: 5, player: "Mordecai Brown", personId: 112063, team: "CHC", teamId: 112, statValue: 0.805, year: 1906, status: "Dead Ball Era" },
+      { rank: 6, player: "Christy Mathewson", personId: 118161, team: "NYG", teamId: 137, statValue: 0.827, year: 1909, status: "Dead Ball Era" },
+      { rank: 7, player: "Bob Gibson", personId: 115178, team: "STL", teamId: 138, statValue: 0.853, year: 1968, status: "Expansion Era" },
+      { rank: 8, player: "Randy Johnson", personId: 116539, team: "ARI", teamId: 109, statValue: 0.866, year: 1995, status: "Contemporary Era" }
     ]
   };
 

@@ -8,6 +8,7 @@ function App() {
   const availableSeasons = getLastNSeasons(10);
   
   const [selectedSeason, setSelectedSeason] = useState(currentSeason);
+  const [selectedCategory, setSelectedCategory] = useState('hitting');
   const [selectedStat, setSelectedStat] = useState('homeRuns');
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('historical');
@@ -111,6 +112,13 @@ function App() {
     );
   }, [searchTerm, historicalRecords]);
 
+  // Filter stats by selected category
+  const availableStats = useMemo(() => {
+    return Object.entries(STAT_TYPES)
+      .filter(([key, stat]) => stat.category === selectedCategory)
+      .reduce((acc, [key, stat]) => ({ ...acc, [key]: stat }), {});
+  }, [selectedCategory]);
+
   // Calculate stats for display
   const currentSeasonLeader = seasonLeaders[currentSeason]?.[0];
   const maxHistoricalRecord = historicalRecords[0];
@@ -140,23 +148,48 @@ function App() {
             <p className="mt-2 text-slate-500 dark:text-slate-400">Tracking historical greatness and modern power.</p>
           </div>
 
-          {/* Stat Selector */}
-          <div className="flex items-center gap-3">
-            <label htmlFor="stat-selector" className="text-sm font-medium text-slate-600 dark:text-slate-400">
-              Stat:
-            </label>
-            <select 
-              id="stat-selector"
-              value={selectedStat}
-              onChange={(e) => setSelectedStat(e.target.value)}
-              className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 font-semibold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-            >
-              {Object.values(STAT_TYPES).map(stat => (
-                <option key={stat.key} value={stat.key}>
-                  {stat.label}
-                </option>
-              ))}
-            </select>
+          {/* Category and Stat Selectors */}
+          <div className="flex items-center gap-6">
+            {/* Category Selector */}
+            <div className="flex items-center gap-3">
+              <label htmlFor="category-selector" className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                Category:
+              </label>
+              <select 
+                id="category-selector"
+                value={selectedCategory}
+                onChange={(e) => {
+                  const newCategory = e.target.value;
+                  setSelectedCategory(newCategory);
+                  // Set first stat of new category
+                  const firstStat = Object.keys(STAT_TYPES).find(key => STAT_TYPES[key].category === newCategory);
+                  if (firstStat) setSelectedStat(firstStat);
+                }}
+                className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 font-semibold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+              >
+                <option value="hitting">Batting</option>
+                <option value="pitching">Pitching</option>
+              </select>
+            </div>
+            
+            {/* Stat Selector */}
+            <div className="flex items-center gap-3">
+              <label htmlFor="stat-selector" className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                Stat:
+              </label>
+              <select 
+                id="stat-selector"
+                value={selectedStat}
+                onChange={(e) => setSelectedStat(e.target.value)}
+                className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 font-semibold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+              >
+                {Object.values(availableStats).map(stat => (
+                  <option key={stat.key} value={stat.key}>
+                    {stat.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
