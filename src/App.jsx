@@ -1,75 +1,70 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Search, Trophy, TrendingUp, History, User, Calendar, Info } from 'lucide-react'
-
-// Historical Data Constants
-const HISTORICAL_RECORDS = [
-  { rank: 1, player: "Barry Bonds", team: "SFG", hr: 73, year: 2001, status: "All-Time Record" },
-  { rank: 2, player: "Mark McGwire", team: "STL", hr: 70, year: 1998, status: "NL Record (Former)" },
-  { rank: 3, player: "Sammy Sosa", team: "CHC", hr: 66, year: 1998, status: "Active Era" },
-  { rank: 4, player: "Mark McGwire", team: "STL", hr: 65, year: 1999, status: "Active Era" },
-  { rank: 5, player: "Sammy Sosa", team: "CHC", hr: 64, year: 2001, status: "Active Era" },
-  { rank: 6, player: "Sammy Sosa", team: "CHC", hr: 63, year: 1999, status: "Active Era" },
-  { rank: 7, player: "Aaron Judge", team: "NYY", hr: 62, year: 2022, status: "AL Record" },
-  { rank: 8, player: "Roger Maris", team: "NYY", hr: 61, year: 1961, status: "AL Record (Former)" },
-  { rank: 9, player: "Babe Ruth", team: "NYY", hr: 60, year: 1927, status: "Historical Legend" },
-  { rank: 10, player: "Cal Raleigh", team: "SEA", hr: 60, year: 2025, status: "Catcher Record" },
-];
-
-const SEASON_LEADERS = {
-  2025: [
-    { player: "Cal Raleigh", team: "SEA", hr: 60, league: "AL" },
-    { player: "Kyle Schwarber", team: "PHI", hr: 56, league: "NL" },
-    { player: "Shohei Ohtani", team: "LAD", hr: 55, league: "NL" },
-    { player: "Aaron Judge", team: "NYY", hr: 53, league: "AL" },
-  ],
-  2024: [
-    { player: "Aaron Judge", team: "NYY", hr: 58, league: "AL" },
-    { player: "Shohei Ohtani", team: "LAD", hr: 54, league: "NL" },
-    { player: "Anthony Santander", team: "BAL", hr: 44, league: "AL" },
-    { player: "Juan Soto", team: "NYY", hr: 41, league: "AL" },
-  ],
-  2023: [
-    { player: "Matt Olson", team: "ATL", hr: 54, league: "NL" },
-    { player: "Pete Alonso", team: "NYM", hr: 46, league: "NL" },
-    { player: "Shohei Ohtani", team: "LAA", hr: 44, league: "AL" },
-    { player: "Adolis Garcia", team: "TEX", hr: 39, league: "AL" },
-  ],
-  2022: [
-    { player: "Aaron Judge", team: "NYY", hr: 62, league: "AL" },
-    { player: "Kyle Schwarber", team: "PHI", hr: 46, league: "NL" },
-    { player: "Mike Trout", team: "LAA", hr: 40, league: "AL" },
-    { player: "Pete Alonso", team: "NYM", hr: 40, league: "NL" },
-  ],
-};
-
-const PLAYER_TRAJECTORIES = {
-  "Aaron Judge": [
-    { year: 2017, hr: 52 }, { year: 2018, hr: 27 }, { year: 2019, hr: 27 }, 
-    { year: 2020, hr: 9 }, { year: 2021, hr: 39 }, { year: 2022, hr: 62 }, 
-    { year: 2023, hr: 37 }, { year: 2024, hr: 58 }, { year: 2025, hr: 53 }
-  ],
-  "Shohei Ohtani": [
-    { year: 2018, hr: 22 }, { year: 2019, hr: 18 }, { year: 2020, hr: 7 }, 
-    { year: 2021, hr: 46 }, { year: 2022, hr: 34 }, { year: 2023, hr: 44 }, 
-    { year: 2024, hr: 54 }, { year: 2025, hr: 55 }
-  ],
-  "Giancarlo Stanton": [
-    { year: 2017, hr: 59 }, { year: 2018, hr: 38 }, { year: 2019, hr: 3 }, 
-    { year: 2020, hr: 4 }, { year: 2021, hr: 35 }, { year: 2022, hr: 31 },
-    { year: 2023, hr: 24 }, { year: 2024, hr: 27 }, { year: 2025, hr: 22 }
-  ]
-};
+import { getHistoricalRecords, getMultipleSeasonLeaders, getPlayerTrajectory, getTopPlayersFromSeasons, getCurrentBaseballSeason, getLastNSeasons, getActiveCareerLeader } from './mlbApi'
 
 function App() {
-  const [selectedSeason, setSelectedSeason] = useState(2025);
+  const currentSeason = getCurrentBaseballSeason();
+  const availableSeasons = getLastNSeasons(10);
+  
+  const [selectedSeason, setSelectedSeason] = useState(currentSeason);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('historical');
+  const [loading, setLoading] = useState(true);
+  const [historicalRecords, setHistoricalRecords] = useState([]);
+  const [seasonLeaders, setSeasonLeaders] = useState({});
+  const [playerTrajectories, setPlayerTrajectories] = useState({});
+  const [activeCareerLeader, setActiveCareerLeader] = useState(null);
+
+  // Fetch data on component mount
+  useEffect(() => {
+    async function fetchData() {
+      setLoading(true);
+      try {
+        // Fetch historical records
+        const historical = await getHistoricalRecords();
+        setHistoricalRecords(historical);
+
+        // Fetch season leaders for last 10 years (dynamic)
+        const leaders = await getMultipleSeasonLeaders();
+        setSeasonLeaders(leaders);
+
+        // Fetch active career leader
+        const careerLeader = await getActiveCareerLeader();
+        setActiveCareerLeader(careerLeader);
+
+        // Fetch top 100 players from last 10 seasons dynamically
+        const topPlayers = await getTopPlayersFromSeasons(10, 100);
+        console.log(`Fetched ${topPlayers.length} top players from last 10 seasons`);
+        
+        // Fetch player trajectories for top players (last 10 years)
+        const trajectoryYears = getLastNSeasons(10);
+        const trajectories = {};
+        for (const player of topPlayers) {
+          const data = await getPlayerTrajectory(player.id, trajectoryYears);
+          if (data.length > 0) {
+            trajectories[player.name] = data;
+          }
+        }
+        setPlayerTrajectories(trajectories);
+      } catch (error) {
+        console.error('Error fetching MLB data:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchData();
+  }, []);
 
   const filteredHistory = useMemo(() => {
-    return HISTORICAL_RECORDS.filter(r => 
+    return historicalRecords.filter(r => 
       r.player.toLowerCase().includes(searchTerm.toLowerCase())
     );
-  }, [searchTerm]);
+  }, [searchTerm, historicalRecords]);
+
+  // Calculate stats for display
+  const currentSeasonLeader = seasonLeaders[currentSeason]?.[0];
+  const maxHistoricalHR = historicalRecords[0]?.hr || 73;
 
   const StatCard = ({ label, value, icon: Icon, color }) => (
     <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center space-x-4 transition-transform hover:scale-[1.02]">
@@ -118,27 +113,37 @@ function App() {
 
       <main className="max-w-7xl mx-auto space-y-8">
         
+        {/* Loading State */}
+        {loading && (
+          <div className="text-center py-20">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+            <p className="mt-4 text-slate-500">Loading MLB data...</p>
+          </div>
+        )}
+
         {/* Quick Stats Banner */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <StatCard 
-            label="Single Season Record" 
-            value="73 (Bonds, 2001)" 
-            icon={History} 
-            color="bg-blue-500" 
-          />
-          <StatCard 
-            label="Current Season Leader" 
-            value="60 (Raleigh, 2025)" 
-            icon={TrendingUp} 
-            color="bg-emerald-500" 
-          />
-          <StatCard 
-            label="Active Leader (Career)" 
-            value="453 (Stanton)" 
-            icon={User} 
-            color="bg-purple-500" 
-          />
-        </div>
+        {!loading && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <StatCard 
+              label="Single Season Record" 
+              value={`${maxHistoricalHR} (Bonds, 2001)`}
+              icon={History} 
+              color="bg-blue-500" 
+            />
+            <StatCard 
+              label="Current Season Leader" 
+              value={currentSeasonLeader ? `${currentSeasonLeader.hr} (${currentSeasonLeader.player.split(' ').pop()}, ${currentSeason})` : "Loading..."}
+              icon={TrendingUp} 
+              color="bg-emerald-500" 
+            />
+            <StatCard 
+              label="Active Leader (Career)" 
+              value={activeCareerLeader ? `${activeCareerLeader.hr} (${activeCareerLeader.player})` : "Loading..."}
+              icon={User} 
+              color="bg-purple-500" 
+            />
+          </div>
+        )}
 
         {/* Tab Content: Historical */}
         {activeTab === 'historical' && (
@@ -196,7 +201,7 @@ function App() {
         )}
 
         {/* Tab Content: Seasonal Leaders */}
-        {activeTab === 'seasons' && (
+        {activeTab === 'seasons' && !loading && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-bold flex items-center gap-2">
@@ -208,12 +213,12 @@ function App() {
                 onChange={(e) => setSelectedSeason(Number(e.target.value))}
                 className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-lg px-4 py-2 focus:ring-2 focus:ring-emerald-500"
               >
-                {[2025, 2024, 2023, 2022].map(y => <option key={y} value={y}>{y} Season</option>)}
+                {availableSeasons.map(y => <option key={y} value={y}>{y} Season</option>)}
               </select>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {SEASON_LEADERS[selectedSeason].map((leader, i) => (
+              {(seasonLeaders[selectedSeason] || []).map((leader, i) => (
                 <div key={leader.player} className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
                   <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                     <Trophy size={60} />
@@ -234,17 +239,28 @@ function App() {
             <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-xl flex items-start gap-3 border border-blue-100 dark:border-blue-900/30">
               <Info className="text-blue-500 mt-0.5" size={20} />
               <p className="text-sm text-blue-800 dark:text-blue-300">
-                In {selectedSeason}, {SEASON_LEADERS[selectedSeason][0].player} dominated the league with {SEASON_LEADERS[selectedSeason][0].hr} home runs. 
-                This total represents a peak in {SEASON_LEADERS[selectedSeason][0].league} power hitting.
+                {seasonLeaders[selectedSeason]?.[0] ? (
+                  <>In {selectedSeason}, {seasonLeaders[selectedSeason][0].player} dominated the league with {seasonLeaders[selectedSeason][0].hr} home runs. 
+                  This total represents a peak in {seasonLeaders[selectedSeason][0].league} power hitting.</>
+                ) : (
+                  'Loading season data...'
+                )}
               </p>
             </div>
           </div>
         )}
 
         {/* Tab Content: Trends */}
-        {activeTab === 'trends' && (
+        {activeTab === 'trends' && !loading && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {Object.entries(PLAYER_TRAJECTORIES).map(([name, data]) => {
+            {Object.entries(playerTrajectories)
+              .map(([name, data]) => ({
+                name,
+                data,
+                total: data.reduce((sum, d) => sum + d.hr, 0)
+              }))
+              .sort((a, b) => b.total - a.total)
+              .map(({ name, data, total }) => {
               const maxHR = Math.max(...data.map(d => d.hr));
               return (
                 <div key={name} className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 flex flex-col">
@@ -257,6 +273,11 @@ function App() {
                   <div className="relative h-48 w-full flex items-end gap-2 mb-8 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl p-4 pt-8">
                     {data.map((d, i) => (
                       <div key={i} className="flex-1 h-full flex flex-col justify-end group relative">
+                        {/* Data Label */}
+                        <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-bold text-slate-700 dark:text-slate-300">
+                          {d.hr}
+                        </div>
+                        
                         {/* The Bar */}
                         <div 
                           style={{ height: `${Math.max((d.hr / 73) * 100, 2)}%` }} // Ensure at least 2% height so it's visible even if low
@@ -286,9 +307,15 @@ function App() {
                       <span className="text-sm font-bold px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">{maxHR} HR</span>
                     </div>
                     <div className="flex justify-between items-center">
+                      <span className="text-xs text-slate-500 font-medium">Average</span>
+                      <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                        {(total / data.length).toFixed(1)} HR/yr
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
                       <span className="text-xs text-slate-500 font-medium">Total (Shown)</span>
                       <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                        {data.reduce((sum, d) => sum + d.hr, 0)}
+                        {total}
                       </span>
                     </div>
                   </div>
