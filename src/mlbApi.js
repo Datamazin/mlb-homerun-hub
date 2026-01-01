@@ -4,6 +4,55 @@ import { cachedFetch } from './cache';
 // Base URL for MLB Stats API
 const BASE_URL = 'https://statsapi.mlb.com/api/v1';
 
+// Stat Types Configuration
+export const STAT_TYPES = {
+  homeRuns: {
+    key: 'homeRuns',
+    label: 'Home Runs',
+    abbr: 'HR',
+    apiParam: 'homeRuns',
+    category: 'hitting',
+    color: 'blue',
+    format: (val) => Math.round(val)
+  },
+  rbi: {
+    key: 'rbi',
+    label: 'RBIs',
+    abbr: 'RBI',
+    apiParam: 'rbi',
+    category: 'hitting',
+    color: 'purple',
+    format: (val) => Math.round(val)
+  },
+  hits: {
+    key: 'hits',
+    label: 'Hits',
+    abbr: 'H',
+    apiParam: 'hits',
+    category: 'hitting',
+    color: 'green',
+    format: (val) => Math.round(val)
+  },
+  stolenBases: {
+    key: 'stolenBases',
+    label: 'Stolen Bases',
+    abbr: 'SB',
+    apiParam: 'stolenBases',
+    category: 'hitting',
+    color: 'orange',
+    format: (val) => Math.round(val)
+  },
+  battingAverage: {
+    key: 'battingAverage',
+    label: 'Batting Average',
+    abbr: 'AVG',
+    apiParam: 'battingAverage',
+    category: 'hitting',
+    color: 'red',
+    format: (val) => val.toFixed(3)
+  }
+};
+
 // MLB Team ID to Abbreviation mapping
 // Source: https://statsapi.mlb.com/api/v1/teams
 const TEAM_ABBREVIATIONS = {
@@ -14,6 +63,18 @@ const TEAM_ABBREVIATIONS = {
   139: 'TB',  140: 'TEX', 141: 'TOR', 142: 'MIN', 143: 'PHI',
   144: 'ATL', 145: 'CWS', 146: 'MIA', 147: 'NYY', 158: 'MIL'
 };
+
+/**
+ * Format stat value based on stat type
+ * @param {number} value - The stat value
+ * @param {string} statType - The stat type key
+ * @returns {string} Formatted stat value
+ */
+export function formatStatValue(value, statType) {
+  const stat = STAT_TYPES[statType];
+  if (!stat) return value;
+  return stat.format(value);
+}
 
 /**
  * Get the current baseball season year
@@ -41,13 +102,21 @@ export function getLastNSeasons(n = 10) {
 }
 
 /**
- * Fetch season home run leaders
+ * Fetch season leaders for a given stat type
+ * @param {number} season - The season year
+ * @param {string} statType - The stat type key (e.g., 'homeRuns', 'rbi')
  */
-export async function getSeasonLeaders(season) {
-  return cachedFetch(`season_leaders_${season}`, async () => {
+export async function getSeasonLeaders(season, statType = 'homeRuns') {
+  const stat = STAT_TYPES[statType];
+  if (!stat) {
+    console.error(`Invalid stat type: ${statType}`);
+    return [];
+  }
+
+  return cachedFetch(`season_leaders_${season}_${statType}`, async () => {
     try {
       const response = await fetch(
-        `${BASE_URL}/stats/leaders?leaderCategories=homeRuns&season=${season}&statGroup=hitting&limit=16&leaderGameTypes=R&sportId=1`
+        `${BASE_URL}/stats/leaders?leaderCategories=${stat.apiParam}&season=${season}&statGroup=${stat.category}&limit=16&leaderGameTypes=R&sportId=1`
       );
       const data = await response.json();
     
@@ -58,12 +127,19 @@ export async function getSeasonLeaders(season) {
       const teamAbbr = TEAM_ABBREVIATIONS[leader.team?.id] || 
                        leader.team?.name?.substring(0, 3).toUpperCase();
       
+      const statValue = statType === 'battingAverage' 
+        ? parseFloat(leader.value) 
+        : parseInt(leader.value);
+      
       return {
         player: leader.person.fullName,
         personId: leader.person.id,
         team: teamAbbr,
         teamId: leader.team?.id,
-        hr: parseInt(leader.value),
+        statValue: statValue,
+        statType: stat,
+        // Keep legacy 'hr' field for backwards compatibility
+        hr: statType === 'homeRuns' ? statValue : undefined,
         league: leader.league?.abbreviation || 'MLB'
       };
     });
@@ -76,14 +152,16 @@ export async function getSeasonLeaders(season) {
 
 /**
  * Fetch multiple seasons of leaders (parallelized)
+ * @param {number[]} seasons - Array of season years
+ * @param {string} statType - The stat type key
  */
-export async function getMultipleSeasonLeaders(seasons = null) {
+export async function getMultipleSeasonLeaders(seasons = null, statType = 'homeRuns') {
   // If no seasons provided, get last 4 seasons
   const seasonsToFetch = seasons || getLastNSeasons(4);
   
   // Fetch all seasons in parallel
   const leadersPromises = seasonsToFetch.map(season => 
-    getSeasonLeaders(season).then(leaders => ({ season, leaders }))
+    getSeasonLeaders(season, statType).then(leaders => ({ season, leaders }))
   );
   
   const leadersResults = await Promise.all(leadersPromises);
@@ -240,13 +318,20 @@ export const NOTABLE_PLAYERS = {
 
 /**
  * Fetch historical single season records from MLB API (cached)
+ * @param {string} statType - The stat type key
  */
-export async function getHistoricalRecords() {
-  return cachedFetch('historical_records', async () => {
+export async function getHistoricalRecords(statType = 'homeRuns') {
+  const stat = STAT_TYPES[statType];
+  if (!stat) {
+    console.error(`Invalid stat type: ${statType}`);
+    return [];
+  }
+
+  return cachedFetch(`historical_records_${statType}`, async () => {
     try {
-      // Fetch all-time single season home run leaders
+      // Fetch all-time single season leaders
       const response = await fetch(
-        `${BASE_URL}/stats/leaders?leaderCategories=homeRuns&statType=statsSingleSeason&limit=10&sportId=1`
+        `${BASE_URL}/stats/leaders?leaderCategories=${stat.apiParam}&statType=statsSingleSeason&limit=10&sportId=1`
       );
       const data = await response.json();
     
@@ -260,7 +345,9 @@ export async function getHistoricalRecords() {
     // Map and determine status for each record
     return leaders.map((leader, index) => {
       const year = leader.season ? parseInt(leader.season) : null;
-      const hr = parseInt(leader.value);
+      const statValue = statType === 'battingAverage' 
+        ? parseFloat(leader.value) 
+        : parseInt(leader.value);
       const player = leader.person.fullName;
       const teamId = leader.team?.id;
       const team = TEAM_ABBREVIATIONS[teamId] || leader.team?.name?.substring(0, 3).toUpperCase();
@@ -269,9 +356,9 @@ export async function getHistoricalRecords() {
       let status = '';
       if (index === 0) {
         status = 'All-Time Record';
-      } else if (player === 'Aaron Judge' && hr === 62) {
+      } else if (statType === 'homeRuns' && player === 'Aaron Judge' && statValue === 62) {
         status = 'AL Record';
-      } else if (player === 'Roger Maris') {
+      } else if (statType === 'homeRuns' && player === 'Roger Maris') {
         status = 'AL Record (Former)';
       } else if (player === 'Babe Ruth') {
         status = 'Historical Legend';
@@ -288,7 +375,10 @@ export async function getHistoricalRecords() {
         player,
         team,
         teamId,
-        hr,
+        statValue: statValue,
+        statType: stat,
+        // Keep legacy 'hr' field for backwards compatibility
+        hr: statType === 'homeRuns' ? statValue : undefined,
         year,
         status
       };

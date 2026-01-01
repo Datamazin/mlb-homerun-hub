@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { Search, Trophy, TrendingUp, History, User, Calendar, Info } from 'lucide-react'
-import { getHistoricalRecords, getMultipleSeasonLeaders, getPlayerTrajectory, getTopPlayersFromSeasons, getCurrentBaseballSeason, getLastNSeasons, getActiveCareerLeader } from './mlbApi'
+import { getHistoricalRecords, getMultipleSeasonLeaders, getPlayerTrajectory, getTopPlayersFromSeasons, getCurrentBaseballSeason, getLastNSeasons, getActiveCareerLeader, STAT_TYPES, formatStatValue } from './mlbApi'
 import { staleWhileRevalidate } from './cache'
 
 function App() {
@@ -8,6 +8,7 @@ function App() {
   const availableSeasons = getLastNSeasons(10);
   
   const [selectedSeason, setSelectedSeason] = useState(currentSeason);
+  const [selectedStat, setSelectedStat] = useState('homeRuns');
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('historical');
   const [loading, setLoading] = useState(true);
@@ -18,6 +19,7 @@ function App() {
   const [activeCareerLeader, setActiveCareerLeader] = useState(null);
 
   // Fetch data on component mount with stale-while-revalidate
+  // Re-fetch when selectedStat changes
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
@@ -26,13 +28,13 @@ function App() {
         const [historical, leaders, careerLeader] = await Promise.all([
           // Use SWR to show cached data immediately, fetch fresh in background
           staleWhileRevalidate(
-            'initial_historical',
-            () => getHistoricalRecords(),
+            `initial_historical_${selectedStat}`,
+            () => getHistoricalRecords(selectedStat),
             (freshData) => setHistoricalRecords(freshData)
           ),
           staleWhileRevalidate(
-            'initial_leaders',
-            () => getMultipleSeasonLeaders(getLastNSeasons(10)),
+            `initial_leaders_${selectedStat}`,
+            () => getMultipleSeasonLeaders(getLastNSeasons(10), selectedStat),
             (freshData) => setSeasonLeaders(freshData)
           ),
           staleWhileRevalidate(
@@ -55,7 +57,7 @@ function App() {
     }
 
     fetchData();
-  }, []);
+  }, [selectedStat]);
 
   // Lazy load trajectories when Active Trends tab is opened
   useEffect(() => {
@@ -109,7 +111,8 @@ function App() {
 
   // Calculate stats for display
   const currentSeasonLeader = seasonLeaders[currentSeason]?.[0];
-  const maxHistoricalHR = historicalRecords[0]?.hr || 73;
+  const maxHistoricalRecord = historicalRecords[0];
+  const currentStat = STAT_TYPES[selectedStat];
 
   const StatCard = ({ label, value, icon: Icon, color }) => (
     <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center space-x-4 transition-transform hover:scale-[1.02]">
@@ -126,14 +129,36 @@ function App() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans p-4 md:p-8">
       {/* Header */}
-      <header className="max-w-7xl mx-auto mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h1 className="text-4xl font-extrabold tracking-tight flex items-center gap-3">
-            <Trophy className="text-amber-500" /> MLB Home Run Hub
-          </h1>
-          <p className="mt-2 text-slate-500 dark:text-slate-400">Tracking historical greatness and modern power surges.</p>
+      <header className="max-w-7xl mx-auto mb-10 space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div>
+            <h1 className="text-4xl font-extrabold tracking-tight flex items-center gap-3">
+              <Trophy className="text-amber-500" /> MLB Stats Hub
+            </h1>
+            <p className="mt-2 text-slate-500 dark:text-slate-400">Tracking historical greatness and modern power.</p>
+          </div>
+
+          {/* Stat Selector */}
+          <div className="flex items-center gap-3">
+            <label htmlFor="stat-selector" className="text-sm font-medium text-slate-600 dark:text-slate-400">
+              Stat:
+            </label>
+            <select 
+              id="stat-selector"
+              value={selectedStat}
+              onChange={(e) => setSelectedStat(e.target.value)}
+              className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 font-semibold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+            >
+              {Object.values(STAT_TYPES).map(stat => (
+                <option key={stat.key} value={stat.key}>
+                  {stat.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
+        {/* Tab Navigation */}
         <div className="flex bg-white dark:bg-slate-900 rounded-xl p-1 shadow-inner border border-slate-200 dark:border-slate-800">
           <button 
             onClick={() => setActiveTab('historical')}
@@ -170,19 +195,19 @@ function App() {
         {!loading && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <StatCard 
-              label="Single Season Record" 
-              value={`${maxHistoricalHR} (Bonds, 2001)`}
+              label={`Single Season Record (${currentStat.abbr})`}
+              value={maxHistoricalRecord ? `${formatStatValue(maxHistoricalRecord.statValue, selectedStat)} (${maxHistoricalRecord.player.split(' ').pop()}, ${maxHistoricalRecord.year})` : "Loading..."}
               icon={History} 
               color="bg-blue-500" 
             />
             <StatCard 
-              label="Current Season Leader" 
-              value={currentSeasonLeader ? `${currentSeasonLeader.hr} (${currentSeasonLeader.player.split(' ').pop()}, ${currentSeason})` : "Loading..."}
+              label={`Current Season Leader (${currentStat.abbr})`}
+              value={currentSeasonLeader ? `${formatStatValue(currentSeasonLeader.statValue, selectedStat)} (${currentSeasonLeader.player.split(' ').pop()}, ${currentSeason})` : "Loading..."}
               icon={TrendingUp} 
               color="bg-emerald-500" 
             />
             <StatCard 
-              label="Active Leader (Career)" 
+              label="Active Leader (Career HR)" 
               value={activeCareerLeader ? `${activeCareerLeader.hr} (${activeCareerLeader.player})` : "Loading..."}
               icon={User} 
               color="bg-purple-500" 
@@ -214,7 +239,7 @@ function App() {
                   <tr>
                     <th className="px-6 py-4">Rank</th>
                     <th className="px-6 py-4">Player</th>
-                    <th className="px-6 py-4 text-center">HR</th>
+                    <th className="px-6 py-4 text-center">{currentStat.abbr}</th>
                     <th className="px-6 py-4">Team</th>
                     <th className="px-6 py-4">Logo</th>
                     <th className="px-6 py-4">Year</th>
@@ -228,7 +253,7 @@ function App() {
                       <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{row.player}</td>
                       <td className="px-6 py-4 text-center">
                         <span className="inline-block bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-3 py-1 rounded-full font-bold">
-                          {row.hr}
+                          {formatStatValue(row.statValue, selectedStat)}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{row.team}</td>
@@ -307,7 +332,10 @@ function App() {
                   <div className="flex items-end justify-between">
                     <div>
                       <p className="text-xs text-slate-500 dark:text-slate-400">{leader.team}</p>
-                      <p className="text-4xl font-black text-slate-900 dark:text-white mt-2">{leader.hr}</p>
+                      <p className="text-4xl font-black text-slate-900 dark:text-white mt-2">
+                        {formatStatValue(leader.statValue, selectedStat)}
+                        <span className="text-xs ml-2 text-slate-400">{currentStat.abbr}</span>
+                      </p>
                     </div>
                     <div className="h-10 w-1 bg-emerald-500 rounded-full"></div>
                   </div>
@@ -319,8 +347,8 @@ function App() {
               <Info className="text-blue-500 mt-0.5" size={20} />
               <p className="text-sm text-blue-800 dark:text-blue-300">
                 {seasonLeaders[selectedSeason]?.[0] ? (
-                  <>In {selectedSeason}, {seasonLeaders[selectedSeason][0].player} dominated the league with {seasonLeaders[selectedSeason][0].hr} home runs. 
-                  This total represents a peak in {seasonLeaders[selectedSeason][0].league} power hitting.</>
+                  <>In {selectedSeason}, {seasonLeaders[selectedSeason][0].player} dominated the league with {formatStatValue(seasonLeaders[selectedSeason][0].statValue, selectedStat)} {currentStat.label.toLowerCase()}. 
+                  This total represents a peak in {seasonLeaders[selectedSeason][0].league} {currentStat.category} performance.</>
                 ) : (
                   'Loading season data...'
                 )}
