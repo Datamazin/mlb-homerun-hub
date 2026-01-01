@@ -176,7 +176,9 @@ export async function getSeasonLeaders(season, statType = 'homeRuns') {
       const teamAbbr = TEAM_ABBREVIATIONS[leader.team?.id] || 
                        leader.team?.name?.substring(0, 3).toUpperCase();
       
-      const statValue = statType === 'battingAverage' 
+      // Use parseFloat for decimal stats, parseInt for counting stats
+      const needsDecimal = ['battingAverage', 'earnedRunAverage', 'whip'].includes(statType);
+      const statValue = needsDecimal 
         ? parseFloat(leader.value) 
         : parseInt(leader.value);
       
