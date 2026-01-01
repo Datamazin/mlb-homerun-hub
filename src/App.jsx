@@ -8,6 +8,7 @@ function App() {
   const availableSeasons = getLastNSeasons(10);
   
   const [selectedSeason, setSelectedSeason] = useState(currentSeason);
+  const [selectedDecade, setSelectedDecade] = useState(null); // null means single season view
   const [selectedCategory, setSelectedCategory] = useState('hitting');
   const [selectedStat, setSelectedStat] = useState('homeRuns');
   const [searchTerm, setSearchTerm] = useState('');
@@ -39,8 +40,8 @@ function App() {
             (freshData) => setSeasonLeaders(freshData)
           ),
           staleWhileRevalidate(
-            'initial_career_leader',
-            () => getActiveCareerLeader(),
+            `initial_career_leader_${selectedStat}`,
+            () => getActiveCareerLeader(selectedStat),
             (freshData) => setActiveCareerLeader(freshData)
           )
         ]);
@@ -59,6 +60,28 @@ function App() {
 
     fetchData();
   }, [selectedStat]);
+
+  // Fetch decade data when decade is selected
+  useEffect(() => {
+    async function fetchDecadeData() {
+      if (selectedDecade) {
+        const decadeSeasons = getSeasonsForDecade(selectedDecade);
+        const seasonsToFetch = decadeSeasons.filter(season => !seasonLeaders[season]);
+        
+        if (seasonsToFetch.length > 0) {
+          console.log(`Fetching data for ${selectedDecade}s:`, seasonsToFetch);
+          try {
+            const leaders = await getMultipleSeasonLeaders(seasonsToFetch, selectedStat);
+            setSeasonLeaders(prev => ({ ...prev, ...leaders }));
+          } catch (error) {
+            console.error('Error fetching decade data:', error);
+          }
+        }
+      }
+    }
+    
+    fetchDecadeData();
+  }, [selectedDecade, selectedStat]);
 
   // Lazy load trajectories when Active Trends tab is opened
   useEffect(() => {
@@ -111,6 +134,36 @@ function App() {
       r.player.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [searchTerm, historicalRecords]);
+
+  // Get available decades (from 1900s to current decade)
+  const getAvailableDecades = useMemo(() => {
+    const currentYear = getCurrentBaseballSeason();
+    const decades = [];
+    for (let decade = Math.floor(currentYear / 10) * 10; decade >= 1900; decade -= 10) {
+      decades.push(decade);
+    }
+    return decades;
+  }, []);
+
+  // Get seasons for a specific decade
+  const getSeasonsForDecade = (decade) => {
+    const seasons = [];
+    const currentYear = getCurrentBaseballSeason();
+    for (let year = decade + 9; year >= decade; year--) {
+      if (year <= currentYear) {
+        seasons.push(year);
+      }
+    }
+    return seasons;
+  };
+
+  // Get seasons to display based on view mode
+  const seasonsToDisplay = useMemo(() => {
+    if (selectedDecade) {
+      return getSeasonsForDecade(selectedDecade);
+    }
+    return [selectedSeason];
+  }, [selectedDecade, selectedSeason]);
 
   // Filter stats by selected category
   const availableStats = useMemo(() => {
@@ -242,8 +295,8 @@ function App() {
               color="bg-emerald-500" 
             />
             <StatCard 
-              label="Active Leader (Career HR)" 
-              value={activeCareerLeader ? `${activeCareerLeader.hr} (${activeCareerLeader.player})` : "Loading..."}
+              label={`Career Total Leader (${currentStat.abbr})`}
+              value={activeCareerLeader ? `${formatStatValue(activeCareerLeader.statValue, selectedStat)} (${activeCareerLeader.player})` : "Loading..."}
               icon={User} 
               color="bg-purple-500" 
             />
@@ -332,22 +385,52 @@ function App() {
         {/* Tab Content: Seasonal Leaders */}
         {activeTab === 'seasons' && !loading && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-4">
               <h2 className="text-2xl font-bold flex items-center gap-2">
                 <Calendar className="text-emerald-500" size={24} /> 
-                Yearly Leaders: <span className="text-emerald-600">{selectedSeason}</span>
+                Yearly Leaders: <span className="text-emerald-600">
+                  {selectedDecade ? `${selectedDecade}s` : selectedSeason}
+                </span>
               </h2>
-              <select 
-                value={selectedSeason} 
-                onChange={(e) => setSelectedSeason(Number(e.target.value))}
-                className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-lg px-4 py-2 focus:ring-2 focus:ring-emerald-500"
-              >
-                {availableSeasons.map(y => <option key={y} value={y}>{y} Season</option>)}
-              </select>
+              <div className="flex items-center gap-3">
+                <select 
+                  value={selectedDecade || ''}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === '') {
+                      setSelectedDecade(null);
+                    } else {
+                      setSelectedDecade(Number(value));
+                    }
+                  }}
+                  className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-lg px-4 py-2 focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option value="">Single Season</option>
+                  {getAvailableDecades.map(decade => (
+                    <option key={decade} value={decade}>{decade}s</option>
+                  ))}
+                </select>
+                {!selectedDecade && (
+                  <select 
+                    value={selectedSeason} 
+                    onChange={(e) => setSelectedSeason(Number(e.target.value))}
+                    className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-lg px-4 py-2 focus:ring-2 focus:ring-emerald-500"
+                  >
+                    {availableSeasons.map(y => <option key={y} value={y}>{y} Season</option>)}
+                  </select>
+                )}
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {(seasonLeaders[selectedSeason] || []).map((leader, i) => (
+            {seasonsToDisplay.map((season) => (
+              <div key={season} className="space-y-4">
+                {selectedDecade && (
+                  <h3 className="text-xl font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                    <span className="text-emerald-500">{season}</span> Season
+                  </h3>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {(seasonLeaders[season] || []).map((leader, i) => (
                 <a 
                   key={leader.player}
                   href={`https://www.mlb.com/player/${leader.personId}`}
@@ -388,13 +471,17 @@ function App() {
                     <div className="h-10 w-1 bg-emerald-500 rounded-full"></div>
                   </div>
                 </a>
-              ))}
-            </div>
+                  ))}
+                </div>
+              </div>
+            ))}
 
             <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-xl flex items-start gap-3 border border-blue-100 dark:border-blue-900/30">
               <Info className="text-blue-500 mt-0.5" size={20} />
               <p className="text-sm text-blue-800 dark:text-blue-300">
-                {seasonLeaders[selectedSeason]?.[0] ? (
+                {selectedDecade ? (
+                  <>Viewing leaders from the {selectedDecade}s decade. Each season shows the top performers in {currentStat.label.toLowerCase()}.</>
+                ) : seasonLeaders[selectedSeason]?.[0] ? (
                   <>In {selectedSeason}, {seasonLeaders[selectedSeason][0].player} dominated the league with {formatStatValue(seasonLeaders[selectedSeason][0].statValue, selectedStat)} {currentStat.label.toLowerCase()}. 
                   This total represents a peak in {seasonLeaders[selectedSeason][0].league} {currentStat.category} performance.</>
                 ) : (

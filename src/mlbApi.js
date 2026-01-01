@@ -594,30 +594,28 @@ function getHistoricalRecordsFallback(statType) {
  * Fetches current season leaders and returns the one with highest career total
  * Only includes players active in the current season
  */
-export async function getActiveCareerLeader() {
+export async function getActiveCareerLeader(statType = 'homeRuns') {
   const currentSeason = getCurrentBaseballSeason();
   
-  return cachedFetch(`active_career_leader_${currentSeason}`, async () => {
+  return cachedFetch(`active_career_leader_${statType}_${currentSeason}`, async () => {
     try {
-      // Fetch career home run leaders filtered by players active in current season
-      const response = await fetch(
-        `${BASE_URL}/stats/leaders?leaderCategories=homeRuns&season=${currentSeason}&statGroup=hitting&statType=career&limit=1&playerPool=ACTIVE&leaderGameTypes=R&sportId=1`
-      );
-      const data = await response.json();
-    
-    if (!data.leagueLeaders?.[0]?.leaders?.[0]) {
-      console.error('No active career leader data found');
-      return { player: 'Stanton', hr: 453 }; // Fallback
-    }
-    
-    const leader = data.leagueLeaders[0].leaders[0];
+      // Get top 10 players from current season to find active career leader
+      const leaders = await getSeasonLeaders(currentSeason, statType);
+      
+      if (!leaders || leaders.length === 0) {
+        console.error('No season leaders found for', statType);
+        return { player: 'N/A', statValue: 0 }; // Fallback
+      }
+      
+      // Return the top leader
+      const topLeader = leaders[0];
       return {
-        player: leader.person.fullName.split(' ').pop(), // Last name only
-        hr: parseInt(leader.value)
+        player: topLeader.player.split(' ').pop(), // Last name only
+        statValue: topLeader.statValue
       };
     } catch (error) {
       console.error('Error fetching active career leader:', error);
-      return { player: 'Stanton', hr: 453 }; // Fallback
+      return { player: 'N/A', statValue: 0 }; // Fallback
     }
   });
 }
