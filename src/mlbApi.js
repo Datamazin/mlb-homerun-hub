@@ -178,16 +178,19 @@ export async function getMultipleSeasonLeaders(seasons = null, statType = 'homeR
 
 /**
  * Get top players dynamically from the past N seasons (parallelized & cached)
- * Returns array of {name, id, totalHR} sorted by total home runs
+ * Returns array of {name, id, totalStat} sorted by total stat value
+ * @param {number} numSeasons - Number of seasons to analyze
+ * @param {number} limit - Number of top players to return
+ * @param {string} statType - The stat type key
  */
-export async function getTopPlayersFromSeasons(numSeasons = 10, limit = 20) {
-  return cachedFetch(`top_players_${numSeasons}_${limit}`, async () => {
+export async function getTopPlayersFromSeasons(numSeasons = 10, limit = 20, statType = 'homeRuns') {
+  return cachedFetch(`top_players_${numSeasons}_${limit}_${statType}`, async () => {
     try {
       const seasons = getLastNSeasons(numSeasons);
       const playerMap = new Map();
       
       // Fetch all season leaders in parallel
-      const leadersPromises = seasons.map(season => getSeasonLeaders(season));
+      const leadersPromises = seasons.map(season => getSeasonLeaders(season, statType));
       const allLeaders = await Promise.all(leadersPromises);
       
       // Aggregate players and their stats
@@ -196,15 +199,15 @@ export async function getTopPlayersFromSeasons(numSeasons = 10, limit = 20) {
         leaders.forEach(leader => {
           const existingPlayer = playerMap.get(leader.player);
           if (existingPlayer) {
-            existingPlayer.totalHR += leader.hr;
+            existingPlayer.totalStat += leader.statValue;
             existingPlayer.appearances += 1;
             existingPlayer.seasons.push(season);
-            existingPlayer.id = existingPlayer.id || leader.personId; // Use ID from API response
+            existingPlayer.id = existingPlayer.id || leader.personId;
           } else {
             playerMap.set(leader.player, {
               name: leader.player,
-              id: leader.personId, // Already have ID from getSeasonLeaders
-              totalHR: leader.hr,
+              id: leader.personId,
+              totalStat: leader.statValue,
               appearances: 1,
               seasons: [season]
             });
@@ -212,10 +215,10 @@ export async function getTopPlayersFromSeasons(numSeasons = 10, limit = 20) {
         });
       });
       
-      // Convert to array and sort by total home runs
+      // Convert to array and sort by total stat value
       const sortedPlayers = Array.from(playerMap.values())
         .filter(p => p.id) // Only include players with IDs
-        .sort((a, b) => b.totalHR - a.totalHR)
+        .sort((a, b) => b.totalStat - a.totalStat)
         .slice(0, limit);
       
       return sortedPlayers;
@@ -251,20 +254,28 @@ async function getPlayerIdByName(playerName, season) {
 
 /**
  * Fetch player season stats for trajectory (parallelized & cached)
+ * @param {number} playerId - Player ID
+ * @param {number[]} seasons - Array of season years
+ * @param {string} statType - The stat type key (e.g., 'homeRuns', 'hits')
  */
-export async function getPlayerTrajectory(playerId, seasons = []) {
-  return cachedFetch(`trajectory_${playerId}_${seasons.join('_')}`, async () => {
+export async function getPlayerTrajectory(playerId, seasons = [], statType = 'homeRuns') {
+  const stat = STAT_TYPES[statType];
+  return cachedFetch(`trajectory_${playerId}_${seasons.join('_')}_${statType}`, async () => {
     try {
       // Fetch all seasons in parallel
       const fetchPromises = seasons.map(season =>
-        fetch(`${BASE_URL}/people/${playerId}?hydrate=stats(group=hitting,type=season,season=${season},sportId=1)`)
+        fetch(`${BASE_URL}/people/${playerId}?hydrate=stats(group=${stat.category},type=season,season=${season},sportId=1)`)
           .then(res => res.json())
           .then(data => {
             if (data.people?.[0]?.stats?.[0]?.splits?.[0]) {
               const split = data.people[0].stats[0].splits[0];
+              const statValue = statType === 'battingAverage'
+                ? parseFloat(split.stat[stat.apiParam] || 0)
+                : parseInt(split.stat[stat.apiParam] || 0);
               return {
                 year: parseInt(split.season),
-                hr: split.stat.homeRuns || 0
+                statValue: statValue,
+                hr: statType === 'homeRuns' ? statValue : undefined // Keep for backwards compatibility
               };
             }
             return null;

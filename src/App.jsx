@@ -12,7 +12,7 @@ function App() {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('historical');
   const [loading, setLoading] = useState(true);
-  const [trajectoriesLoaded, setTrajectoriesLoaded] = useState(false);
+  const [trajectoriesLoaded, setTrajectoriesLoaded] = useState({});
   const [historicalRecords, setHistoricalRecords] = useState([]);
   const [seasonLeaders, setSeasonLeaders] = useState({});
   const [playerTrajectories, setPlayerTrajectories] = useState({});
@@ -62,11 +62,12 @@ function App() {
   // Lazy load trajectories when Active Trends tab is opened
   useEffect(() => {
     async function loadTrajectories() {
-      if (activeTab === 'trends' && !trajectoriesLoaded) {
-        console.log('⚡ Lazy loading trajectories...');
+      const cacheKey = `${selectedStat}_trajectories`;
+      if (activeTab === 'trends' && !trajectoriesLoaded[cacheKey]) {
+        console.log('⚡ Lazy loading trajectories for', selectedStat);
         try {
-          // Fetch top 20 players from last 10 seasons (reduced from 100)
-          const topPlayers = await getTopPlayersFromSeasons(10, 20);
+          // Fetch top 20 players from last 10 seasons
+          const topPlayers = await getTopPlayersFromSeasons(10, 20, selectedStat);
           console.log(`Fetched ${topPlayers.length} top players for trajectories`);
           
           // Fetch player trajectories in batches of 5 to prevent overwhelming the API
@@ -77,7 +78,7 @@ function App() {
           for (let i = 0; i < topPlayers.length; i += batchSize) {
             const batch = topPlayers.slice(i, i + batchSize);
             const batchPromises = batch.map(player =>
-              getPlayerTrajectory(player.id, trajectoryYears).then(data => ({
+              getPlayerTrajectory(player.id, trajectoryYears, selectedStat).then(data => ({
                 name: player.name,
                 id: player.id,
                 data
@@ -92,8 +93,8 @@ function App() {
             });
           }
           
-          setPlayerTrajectories(trajectories);
-          setTrajectoriesLoaded(true);
+          setPlayerTrajectories(prev => ({ ...prev, [cacheKey]: trajectories }));
+          setTrajectoriesLoaded(prev => ({ ...prev, [cacheKey]: true }));
           console.log('✅ Trajectories loaded successfully');
         } catch (error) {
           console.error('Error loading trajectories:', error);
@@ -102,7 +103,7 @@ function App() {
     }
     
     loadTrajectories();
-  }, [activeTab, trajectoriesLoaded]);
+  }, [activeTab, selectedStat]);
 
   const filteredHistory = useMemo(() => {
     return historicalRecords.filter(r => 
@@ -372,30 +373,36 @@ function App() {
         )}
 
         {/* Tab Content: Trends */}
-        {activeTab === 'trends' && !loading && (
+        {activeTab === 'trends' && !loading && (() => {
+          const cacheKey = `${selectedStat}_trajectories`;
+          const currentTrajectories = playerTrajectories[cacheKey] || {};
+          const isLoaded = trajectoriesLoaded[cacheKey];
+          const currentStat = STAT_TYPES[selectedStat];
+          
+          return (
           <div>
             {/* Loading indicator for trajectories */}
-            {!trajectoriesLoaded && (
+            {!isLoaded && (
               <div className="text-center py-20 bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800">
                 <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-                <p className="mt-4 text-slate-500">Loading player trajectories...</p>
+                <p className="mt-4 text-slate-500">Loading player trajectories for {currentStat.label}...</p>
                 <p className="mt-2 text-xs text-slate-400">Fetching data for top 20 players</p>
               </div>
             )}
             
             {/* Trajectories grid */}
-            {trajectoriesLoaded && (
+            {isLoaded && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {Object.entries(playerTrajectories)
+            {Object.entries(currentTrajectories)
               .map(([name, { data, id }]) => ({
                 name,
                 id,
                 data,
-                total: data.reduce((sum, d) => sum + d.hr, 0)
+                total: data.reduce((sum, d) => sum + d.statValue, 0)
               }))
               .sort((a, b) => b.total - a.total)
               .map(({ name, id, data, total }) => {
-              const maxHR = Math.max(...data.map(d => d.hr));
+              const maxStat = Math.max(...data.map(d => d.statValue));
               return (
                 <div key={name} className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 flex flex-col">
                   <div className="flex items-center justify-between mb-8">
@@ -416,12 +423,12 @@ function App() {
                       <div key={i} className="flex-1 h-full flex flex-col justify-end group relative">
                         {/* Data Label */}
                         <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-bold text-slate-700 dark:text-slate-300">
-                          {d.hr}
+                          {formatStatValue(d.statValue, selectedStat)}
                         </div>
                         
                         {/* The Bar */}
                         <div 
-                          style={{ height: `${Math.max((d.hr / 73) * 100, 2)}%` }} // Ensure at least 2% height so it's visible even if low
+                          style={{ height: `${Math.max((d.statValue / maxStat) * 100, 2)}%` }}
                           className={`w-full rounded-t-md transition-all duration-700 ease-out shadow-sm ${
                             name === 'Aaron Judge' ? 'bg-blue-500' : 
                             name === 'Shohei Ohtani' ? 'bg-red-500' : 
@@ -431,7 +438,7 @@ function App() {
                         
                         {/* Tooltip */}
                         <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] px-2 py-1 rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
-                          {d.hr} HR in {d.year}
+                          {formatStatValue(d.statValue, selectedStat)} {currentStat.abbr} in {d.year}
                         </div>
                         
                         {/* Year Label */}
@@ -445,18 +452,18 @@ function App() {
                   <div className="mt-auto space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800">
                     <div className="flex justify-between items-center">
                       <span className="text-xs text-slate-500 font-medium">Career High</span>
-                      <span className="text-sm font-bold px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">{maxHR} HR</span>
+                      <span className="text-sm font-bold px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">{formatStatValue(maxStat, selectedStat)} {currentStat.abbr}</span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-xs text-slate-500 font-medium">Average</span>
                       <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                        {(total / data.length).toFixed(1)} HR/yr
+                        {formatStatValue(total / data.length, selectedStat)} {currentStat.abbr}/yr
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-xs text-slate-500 font-medium">Total (Shown)</span>
                       <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                        {total}
+                        {formatStatValue(total, selectedStat)}
                       </span>
                     </div>
                   </div>
@@ -466,7 +473,8 @@ function App() {
           </div>
             )}
           </div>
-        )}
+          );
+        })()}
 
       </main>
 
