@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { Search, Trophy, TrendingUp, History, User, Calendar, Info } from 'lucide-react'
 import { getHistoricalRecords, getMultipleSeasonLeaders, getPlayerTrajectory, getTopPlayersFromSeasons, getCurrentBaseballSeason, getLastNSeasons, getActiveCareerLeader } from './mlbApi'
+import { staleWhileRevalidate } from './cache'
 
 function App() {
   const currentSeason = getCurrentBaseballSeason();
@@ -10,42 +11,42 @@ function App() {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('historical');
   const [loading, setLoading] = useState(true);
+  const [trajectoriesLoaded, setTrajectoriesLoaded] = useState(false);
   const [historicalRecords, setHistoricalRecords] = useState([]);
   const [seasonLeaders, setSeasonLeaders] = useState({});
   const [playerTrajectories, setPlayerTrajectories] = useState({});
   const [activeCareerLeader, setActiveCareerLeader] = useState(null);
 
-  // Fetch data on component mount
+  // Fetch data on component mount with stale-while-revalidate
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
       try {
-        // Fetch historical records
-        const historical = await getHistoricalRecords();
-        setHistoricalRecords(historical);
-
-        // Fetch season leaders for last 10 years (dynamic)
-        const leaders = await getMultipleSeasonLeaders(getLastNSeasons(10));
-        setSeasonLeaders(leaders);
-
-        // Fetch active career leader
-        const careerLeader = await getActiveCareerLeader();
-        setActiveCareerLeader(careerLeader);
-
-        // Fetch top 100 players from last 10 seasons dynamically
-        const topPlayers = await getTopPlayersFromSeasons(10, 100);
-        console.log(`Fetched ${topPlayers.length} top players from last 10 seasons`);
+        // Fetch critical data in parallel with SWR pattern
+        const [historical, leaders, careerLeader] = await Promise.all([
+          // Use SWR to show cached data immediately, fetch fresh in background
+          staleWhileRevalidate(
+            'initial_historical',
+            () => getHistoricalRecords(),
+            (freshData) => setHistoricalRecords(freshData)
+          ),
+          staleWhileRevalidate(
+            'initial_leaders',
+            () => getMultipleSeasonLeaders(getLastNSeasons(10)),
+            (freshData) => setSeasonLeaders(freshData)
+          ),
+          staleWhileRevalidate(
+            'initial_career_leader',
+            () => getActiveCareerLeader(),
+            (freshData) => setActiveCareerLeader(freshData)
+          )
+        ]);
         
-        // Fetch player trajectories for top players (last 10 years)
-        const trajectoryYears = getLastNSeasons(10);
-        const trajectories = {};
-        for (const player of topPlayers) {
-          const data = await getPlayerTrajectory(player.id, trajectoryYears);
-          if (data.length > 0) {
-            trajectories[player.name] = data;
-          }
-        }
-        setPlayerTrajectories(trajectories);
+        // Set initial cached data (may be null on first visit)
+        if (historical) setHistoricalRecords(historical);
+        if (leaders) setSeasonLeaders(leaders);
+        if (careerLeader) setActiveCareerLeader(careerLeader);
+        
       } catch (error) {
         console.error('Error fetching MLB data:', error);
       } finally {
@@ -55,6 +56,50 @@ function App() {
 
     fetchData();
   }, []);
+
+  // Lazy load trajectories when Active Trends tab is opened
+  useEffect(() => {
+    async function loadTrajectories() {
+      if (activeTab === 'trends' && !trajectoriesLoaded) {
+        console.log('⚡ Lazy loading trajectories...');
+        try {
+          // Fetch top 20 players from last 10 seasons (reduced from 100)
+          const topPlayers = await getTopPlayersFromSeasons(10, 20);
+          console.log(`Fetched ${topPlayers.length} top players for trajectories`);
+          
+          // Fetch player trajectories in batches of 5 to prevent overwhelming the API
+          const trajectoryYears = getLastNSeasons(10);
+          const trajectories = {};
+          
+          const batchSize = 5;
+          for (let i = 0; i < topPlayers.length; i += batchSize) {
+            const batch = topPlayers.slice(i, i + batchSize);
+            const batchPromises = batch.map(player =>
+              getPlayerTrajectory(player.id, trajectoryYears).then(data => ({
+                name: player.name,
+                data
+              }))
+            );
+            
+            const results = await Promise.all(batchPromises);
+            results.forEach(({ name, data }) => {
+              if (data.length > 0) {
+                trajectories[name] = data;
+              }
+            });
+          }
+          
+          setPlayerTrajectories(trajectories);
+          setTrajectoriesLoaded(true);
+          console.log('✅ Trajectories loaded successfully');
+        } catch (error) {
+          console.error('Error loading trajectories:', error);
+        }
+      }
+    }
+    
+    loadTrajectories();
+  }, [activeTab, trajectoriesLoaded]);
 
   const filteredHistory = useMemo(() => {
     return historicalRecords.filter(r => 
@@ -230,7 +275,13 @@ function App() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {(seasonLeaders[selectedSeason] || []).map((leader, i) => (
-                <div key={leader.player} className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
+                <a 
+                  key={leader.player}
+                  href={`https://www.mlb.com/player/${leader.personId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group hover:shadow-lg hover:scale-[1.02] transition-all cursor-pointer"
+                >
                   {leader.teamId && (
                     <div className="absolute top-4 right-4 opacity-10 group-hover:opacity-20 transition-opacity">
                       <img
@@ -252,7 +303,7 @@ function App() {
                     </div>
                   )}
                   <p className="text-sm font-bold text-slate-400 mb-1">#{i + 1} {leader.league}</p>
-                  <h3 className="text-lg font-bold mb-2">{leader.player}</h3>
+                  <h3 className="text-lg font-bold mb-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{leader.player}</h3>
                   <div className="flex items-end justify-between">
                     <div>
                       <p className="text-xs text-slate-500 dark:text-slate-400">{leader.team}</p>
@@ -260,7 +311,7 @@ function App() {
                     </div>
                     <div className="h-10 w-1 bg-emerald-500 rounded-full"></div>
                   </div>
-                </div>
+                </a>
               ))}
             </div>
 
@@ -280,7 +331,19 @@ function App() {
 
         {/* Tab Content: Trends */}
         {activeTab === 'trends' && !loading && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div>
+            {/* Loading indicator for trajectories */}
+            {!trajectoriesLoaded && (
+              <div className="text-center py-20 bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800">
+                <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+                <p className="mt-4 text-slate-500">Loading player trajectories...</p>
+                <p className="mt-2 text-xs text-slate-400">Fetching data for top 20 players</p>
+              </div>
+            )}
+            
+            {/* Trajectories grid */}
+            {trajectoriesLoaded && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {Object.entries(playerTrajectories)
               .map(([name, data]) => ({
                 name,
@@ -350,6 +413,8 @@ function App() {
                 </div>
               );
             })}
+          </div>
+            )}
           </div>
         )}
 

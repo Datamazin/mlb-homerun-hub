@@ -1,4 +1,6 @@
 // MLB Stats API Service
+import { cachedFetch } from './cache';
+
 // Base URL for MLB Stats API
 const BASE_URL = 'https://statsapi.mlb.com/api/v1';
 
@@ -42,11 +44,12 @@ export function getLastNSeasons(n = 10) {
  * Fetch season home run leaders
  */
 export async function getSeasonLeaders(season) {
-  try {
-    const response = await fetch(
-      `${BASE_URL}/stats/leaders?leaderCategories=homeRuns&season=${season}&statGroup=hitting&limit=16&leaderGameTypes=R&sportId=1`
-    );
-    const data = await response.json();
+  return cachedFetch(`season_leaders_${season}`, async () => {
+    try {
+      const response = await fetch(
+        `${BASE_URL}/stats/leaders?leaderCategories=homeRuns&season=${season}&statGroup=hitting&limit=16&leaderGameTypes=R&sportId=1`
+      );
+      const data = await response.json();
     
     if (!data.leagueLeaders?.[0]?.leaders) return [];
     
@@ -64,86 +67,85 @@ export async function getSeasonLeaders(season) {
         league: leader.league?.abbreviation || 'MLB'
       };
     });
-  } catch (error) {
-    console.error(`Error fetching ${season} season leaders:`, error);
-    return [];
-  }
+    } catch (error) {
+      console.error(`Error fetching ${season} season leaders:`, error);
+      return [];
+    }
+  });
 }
 
 /**
- * Fetch multiple seasons of leaders
+ * Fetch multiple seasons of leaders (parallelized)
  */
 export async function getMultipleSeasonLeaders(seasons = null) {
   // If no seasons provided, get last 4 seasons
   const seasonsToFetch = seasons || getLastNSeasons(4);
-  const results = {};
   
-  for (const season of seasonsToFetch) {
-    const leaders = await getSeasonLeaders(season);
+  // Fetch all seasons in parallel
+  const leadersPromises = seasonsToFetch.map(season => 
+    getSeasonLeaders(season).then(leaders => ({ season, leaders }))
+  );
+  
+  const leadersResults = await Promise.all(leadersPromises);
+  
+  const results = {};
+  leadersResults.forEach(({ season, leaders }) => {
     if (leaders.length > 0) {
       results[season] = leaders.slice(0, 16); // Top 16 per season
     }
-  }
+  });
   
   return results;
 }
 
 /**
- * Get top players dynamically from the past N seasons
+ * Get top players dynamically from the past N seasons (parallelized & cached)
  * Returns array of {name, id, totalHR} sorted by total home runs
  */
-export async function getTopPlayersFromSeasons(numSeasons = 10, limit = 100) {
-  try {
-    const seasons = getLastNSeasons(numSeasons);
-    const playerMap = new Map();
-    
-    // Fetch all season leaders for the specified seasons
-    for (const season of seasons) {
-      const leaders = await getSeasonLeaders(season);
+export async function getTopPlayersFromSeasons(numSeasons = 10, limit = 20) {
+  return cachedFetch(`top_players_${numSeasons}_${limit}`, async () => {
+    try {
+      const seasons = getLastNSeasons(numSeasons);
+      const playerMap = new Map();
+      
+      // Fetch all season leaders in parallel
+      const leadersPromises = seasons.map(season => getSeasonLeaders(season));
+      const allLeaders = await Promise.all(leadersPromises);
       
       // Aggregate players and their stats
-      leaders.forEach(leader => {
-        const existingPlayer = playerMap.get(leader.player);
-        if (existingPlayer) {
-          existingPlayer.totalHR += leader.hr;
-          existingPlayer.appearances += 1;
-          existingPlayer.seasons.push(season);
-        } else {
-          // Need to get player ID - we'll extract from API call
-          playerMap.set(leader.player, {
-            name: leader.player,
-            totalHR: leader.hr,
-            appearances: 1,
-            seasons: [season]
-          });
-        }
-      });
-    }
-    
-    // Convert to array and sort by total home runs
-    const sortedPlayers = Array.from(playerMap.values())
-      .sort((a, b) => b.totalHR - a.totalHR)
-      .slice(0, limit);
-    
-    // Fetch player IDs for top players
-    const playersWithIds = [];
-    for (const player of sortedPlayers) {
-      const id = await getPlayerIdByName(player.name, player.seasons[0]);
-      if (id) {
-        playersWithIds.push({
-          name: player.name,
-          id: id,
-          totalHR: player.totalHR,
-          appearances: player.appearances
+      allLeaders.forEach((leaders, idx) => {
+        const season = seasons[idx];
+        leaders.forEach(leader => {
+          const existingPlayer = playerMap.get(leader.player);
+          if (existingPlayer) {
+            existingPlayer.totalHR += leader.hr;
+            existingPlayer.appearances += 1;
+            existingPlayer.seasons.push(season);
+            existingPlayer.id = existingPlayer.id || leader.personId; // Use ID from API response
+          } else {
+            playerMap.set(leader.player, {
+              name: leader.player,
+              id: leader.personId, // Already have ID from getSeasonLeaders
+              totalHR: leader.hr,
+              appearances: 1,
+              seasons: [season]
+            });
+          }
         });
-      }
+      });
+      
+      // Convert to array and sort by total home runs
+      const sortedPlayers = Array.from(playerMap.values())
+        .filter(p => p.id) // Only include players with IDs
+        .sort((a, b) => b.totalHR - a.totalHR)
+        .slice(0, limit);
+      
+      return sortedPlayers;
+    } catch (error) {
+      console.error('Error fetching top players:', error);
+      return [];
     }
-    
-    return playersWithIds;
-  } catch (error) {
-    console.error('Error fetching top players:', error);
-    return [];
-  }
+  });
 }
 
 /**
@@ -170,34 +172,37 @@ async function getPlayerIdByName(playerName, season) {
 }
 
 /**
- * Fetch player season stats for trajectory
+ * Fetch player season stats for trajectory (parallelized & cached)
  */
 export async function getPlayerTrajectory(playerId, seasons = []) {
-  try {
-    const trajectory = [];
-    
-    // Fetch data for each season individually
-    for (const season of seasons) {
-      const response = await fetch(
-        `${BASE_URL}/people/${playerId}?hydrate=stats(group=hitting,type=season,season=${season},sportId=1)`
+  return cachedFetch(`trajectory_${playerId}_${seasons.join('_')}`, async () => {
+    try {
+      // Fetch all seasons in parallel
+      const fetchPromises = seasons.map(season =>
+        fetch(`${BASE_URL}/people/${playerId}?hydrate=stats(group=hitting,type=season,season=${season},sportId=1)`)
+          .then(res => res.json())
+          .then(data => {
+            if (data.people?.[0]?.stats?.[0]?.splits?.[0]) {
+              const split = data.people[0].stats[0].splits[0];
+              return {
+                year: parseInt(split.season),
+                hr: split.stat.homeRuns || 0
+              };
+            }
+            return null;
+          })
+          .catch(() => null)
       );
-      const data = await response.json();
       
-      if (data.people?.[0]?.stats?.[0]?.splits?.[0]) {
-        const split = data.people[0].stats[0].splits[0];
-        trajectory.push({
-          year: parseInt(split.season),
-          hr: split.stat.homeRuns || 0
-        });
-      }
+      const results = await Promise.all(fetchPromises);
+      const trajectory = results.filter(r => r !== null);
+      
+      return trajectory.sort((a, b) => a.year - b.year);
+    } catch (error) {
+      console.error(`Error fetching player trajectory for ${playerId}:`, error);
+      return [];
     }
-    
-    console.log(`Player ${playerId} trajectory:`, trajectory);
-    return trajectory.sort((a, b) => a.year - b.year);
-  } catch (error) {
-    console.error(`Error fetching player trajectory for ${playerId}:`, error);
-    return [];
-  }
+  });
 }
 
 /**
@@ -234,15 +239,16 @@ export const NOTABLE_PLAYERS = {
 };
 
 /**
- * Fetch historical single season records from MLB API
+ * Fetch historical single season records from MLB API (cached)
  */
 export async function getHistoricalRecords() {
-  try {
-    // Fetch all-time single season home run leaders
-    const response = await fetch(
-      `${BASE_URL}/stats/leaders?leaderCategories=homeRuns&statType=statsSingleSeason&limit=10&sportId=1`
-    );
-    const data = await response.json();
+  return cachedFetch('historical_records', async () => {
+    try {
+      // Fetch all-time single season home run leaders
+      const response = await fetch(
+        `${BASE_URL}/stats/leaders?leaderCategories=homeRuns&statType=statsSingleSeason&limit=10&sportId=1`
+      );
+      const data = await response.json();
     
     if (!data.leagueLeaders?.[0]?.leaders) {
       console.error('No historical leaders data found');
@@ -301,23 +307,25 @@ export async function getHistoricalRecords() {
       { rank: 8, player: "Roger Maris", team: "NYY", hr: 61, year: 1961, status: "AL Record (Former)" },
       { rank: 9, player: "Babe Ruth", team: "NYY", hr: 60, year: 1927, status: "Historical Legend" }
     ];
-  }
+    }
+  }, 24 * 60 * 60 * 1000); // Cache for 24 hours (historical data doesn't change)
 }
 
 /**
- * Get active career home run leader
+ * Get active career home run leader (cached)
  * Fetches current season leaders and returns the one with highest career total
  * Only includes players active in the current season
  */
 export async function getActiveCareerLeader() {
-  try {
-    const currentSeason = getCurrentBaseballSeason();
-    
-    // Fetch career home run leaders filtered by players active in current season
-    const response = await fetch(
-      `${BASE_URL}/stats/leaders?leaderCategories=homeRuns&season=${currentSeason}&statGroup=hitting&statType=career&limit=1&playerPool=ACTIVE&leaderGameTypes=R&sportId=1`
-    );
-    const data = await response.json();
+  const currentSeason = getCurrentBaseballSeason();
+  
+  return cachedFetch(`active_career_leader_${currentSeason}`, async () => {
+    try {
+      // Fetch career home run leaders filtered by players active in current season
+      const response = await fetch(
+        `${BASE_URL}/stats/leaders?leaderCategories=homeRuns&season=${currentSeason}&statGroup=hitting&statType=career&limit=1&playerPool=ACTIVE&leaderGameTypes=R&sportId=1`
+      );
+      const data = await response.json();
     
     if (!data.leagueLeaders?.[0]?.leaders?.[0]) {
       console.error('No active career leader data found');
@@ -325,12 +333,13 @@ export async function getActiveCareerLeader() {
     }
     
     const leader = data.leagueLeaders[0].leaders[0];
-    return {
-      player: leader.person.fullName.split(' ').pop(), // Last name only
-      hr: parseInt(leader.value)
-    };
-  } catch (error) {
-    console.error('Error fetching active career leader:', error);
-    return { player: 'Stanton', hr: 453 }; // Fallback
-  }
+      return {
+        player: leader.person.fullName.split(' ').pop(), // Last name only
+        hr: parseInt(leader.value)
+      };
+    } catch (error) {
+      console.error('Error fetching active career leader:', error);
+      return { player: 'Stanton', hr: 453 }; // Fallback
+    }
+  });
 }
