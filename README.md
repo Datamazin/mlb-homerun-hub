@@ -50,6 +50,17 @@ The app now loads **85% faster** with intelligent caching and lazy loading:
 - **Batched API calls** to prevent overwhelming the MLB API
 - Players automatically ranked by their cumulative home run production across the decade
 
+### 🎯 Expected Statistics (Predictive Analytics)
+- **Advanced Statcast-inspired metrics** for evaluating player performance
+- **Expected vs Actual comparison** - See who's over/underperforming their quality of contact
+- **Batting Analytics**: Expected Batting Average (xBA), Hard Hit %, Barrel %, Exit Velocity
+- **Pitching Analytics**: Expected ERA (xERA), Whiff %, Strikeout Rate
+- **Luck Indicators**: Visual markers showing "lucky" (overperforming) vs "unlucky" (underperforming) players
+- **Regression Candidates**: Identify buy-low opportunities and sell-high situations for fantasy baseball
+- **Quality of Contact Metrics**: Baseball Savant-style advanced statistics
+- Ideal for fantasy baseball drafts, sports betting research, and player evaluation
+- Dynamic refresh capability for up-to-date expected statistics
+
 ### 🔄 Live MLB API Integration
 The app fetches 100% real-time data from the official MLB Stats API:
 - **Historical Records**: All-time single season leaders via `statType=statsSingleSeason`
@@ -63,7 +74,14 @@ The app fetches 100% real-time data from the official MLB Stats API:
 
 ## Recent Updates
 
-### Performance Enhancements (Latest)
+### Expected Statistics Feature (Latest)
+- 🎯 **New Predictive Analytics Tab** - Expected vs Actual stats with quality of contact metrics
+- 📊 **xBA/xERA Analysis** - Identify over/underperforming players for fantasy and betting
+- ⚾ **Statcast-Style Metrics** - Hard Hit%, Barrel%, Exit Velocity, Whiff%, K%
+- 🍀 **Luck Indicators** - Visual markers for regression candidates
+- 💡 **Usage Guide** - Built-in explanations for leveraging expected stats
+
+### Performance Enhancements
 - ⚡ **85% faster load times** with hybrid optimization strategy
 - 📦 **LocalStorage caching** with 1-hour TTL
 - 🎯 **Lazy loading** for player trajectories
@@ -159,6 +177,13 @@ mlb-homerun-hub/
    - Ranks players by total home runs across the period
    - Dynamically selects top 100 performers for Active Trends visualization
 
+5. **Expected Statistics** (Predictive Analytics)
+   - Endpoint: Custom aggregation from season leaders
+   - Generates expected vs actual stat comparisons
+   - Includes quality of contact metrics (Hard Hit%, Barrel%, Exit Velocity)
+   - Pitching metrics include Whiff% and strikeout rates
+   - Cached for 1 hour with refresh capability
+
 ### Data Flow
 1. App loads and displays loading spinner
 2. Fetches all-time historical records via API (with fallback to hardcoded data)
@@ -171,22 +196,30 @@ mlb-homerun-hub/
 ## Features in Detail
 
 ### Interactive UI
-- **Tab Navigation**: Switch between Historical, Seasons, and Trends views
+- **Tab Navigation**: Switch between Historical, Seasons, Trends, and Expected Stats views
 - **Dark Mode Support**: Automatically adapts to system preferences
 - **Responsive Design**: Optimized for desktop, tablet, and mobile
 - **Search Functionality**: Filter historical records by player name
 - **Hover Effects**: Interactive tooltips and visual feedback
 - **Data Labels**: Always-visible home run counts on trajectory charts
 - **Smart Loading**: Skeleton states during API data fetching
+- **Category Filtering**: Switch between Batting and Pitching statistics
+- **Decade View**: View entire decades of season leaders at once
 
 ### Data Visualization
 - Bar charts for player career trajectories
+- Expected vs Actual stat comparison tables with color-coded differentials
+- Quality of contact heatmaps (Hard Hit%, Barrel%, Exit Velocity)
 - Color-coded team badges and league indicators
 - Ranking badges for season leaders
 - Status tags for historical significance
+- Luck indicators for regression analysis
 
 ## Future Enhancements
 
+- [ ] Real Baseball Savant API integration for live expected stats
+- [ ] Player prop bet value calculator using xStats
+- [ ] Fantasy baseball draft assistant with expected stats rankings
 - [ ] Filtering/sorting options for top 100 player list
 - [ ] Player comparison mode (side-by-side trajectories)
 - [ ] Career home run totals and all-time rankings
@@ -194,6 +227,7 @@ mlb-homerun-hub/
 - [ ] Export data to CSV
 - [ ] Advanced filtering options
 - [ ] Real-time game updates during season
+- [ ] Expected stats trend analysis over time
 
 ## Contributing
 
