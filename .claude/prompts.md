@@ -514,3 +514,15 @@ Build is failing. Check:
 4. Run `npm install` to ensure deps are installed
 5. Clear node_modules and reinstall if necessary
 ```
+## Research Websites
+
+(1) Identify the most reputable and widely used MLB analytics and statistics websites, such as FanGraphs, Baseball Prospectus, Baseball-Reference, and Baseball Savant.
+(2) Research which of these platforms are specifically known for predictive models and projection systems like ZiPS, Steamer, PECOTA, or proprietary betting algorithms.
+(3) Select the top 3 websites based on their focus on forecasting player performance, game outcomes, and season standings.
+(4) For each of the selected top 3 sites, investigate the specific tools and metrics they provide for prediction, including:
+(a) projection systems used and their methodology
+(b) advanced metrics like expected statistics (xBA, xERA) or Win Probability Added (WPA)
+(c) availability of Statcast data and its integration into their predictive models
+(d) frequency of updates for daily or season-long forecasts
+(5) Compare and contrast the top 3 sites regarding their accuracy, reputation among baseball analysts, and whether their best predictive tools are free or require a subscription.
+(6) Synthesize the findings to explain how a user can leverage these specific platforms to gain insights into predicting future MLB results, such as for fantasy baseball or sports betting.

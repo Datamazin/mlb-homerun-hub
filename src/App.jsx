@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Search, Trophy, TrendingUp, History, User, Calendar, Info } from 'lucide-react'
-import { getHistoricalRecords, getMultipleSeasonLeaders, getPlayerTrajectory, getTopPlayersFromSeasons, getCurrentBaseballSeason, getLastNSeasons, getActiveCareerLeader, STAT_TYPES, formatStatValue } from './mlbApi'
+import { Search, Trophy, TrendingUp, History, User, Calendar, Info, Target, BarChart3 } from 'lucide-react'
+import { getHistoricalRecords, getMultipleSeasonLeaders, getPlayerTrajectory, getTopPlayersFromSeasons, getCurrentBaseballSeason, getLastNSeasons, getActiveCareerLeader, getExpectedStats, STAT_TYPES, formatStatValue } from './mlbApi'
 import { staleWhileRevalidate } from './cache'
 
 function App() {
@@ -19,6 +19,10 @@ function App() {
   const [seasonLeaders, setSeasonLeaders] = useState({});
   const [playerTrajectories, setPlayerTrajectories] = useState({});
   const [activeCareerLeader, setActiveCareerLeader] = useState(null);
+  const [expectedStats, setExpectedStats] = useState([]);
+  const [expectedStatsLoading, setExpectedStatsLoading] = useState(false);
+  const [sortColumn, setSortColumn] = useState('actualBA'); // Default sort column
+  const [sortDirection, setSortDirection] = useState('desc'); // 'asc' or 'desc'
 
   // Fetch data on component mount with stale-while-revalidate
   // Re-fetch when selectedStat changes
@@ -172,6 +176,91 @@ function App() {
       .reduce((acc, [key, stat]) => ({ ...acc, [key]: stat }), {});
   }, [selectedCategory]);
 
+  // Sort expected stats based on column and direction
+  const sortedExpectedStats = useMemo(() => {
+    if (!expectedStats.length) return [];
+    
+    const sorted = [...expectedStats].sort((a, b) => {
+      let aVal, bVal;
+      
+      switch (sortColumn) {
+        case 'player':
+          aVal = a.player;
+          bVal = b.player;
+          return sortDirection === 'asc' 
+            ? aVal.localeCompare(bVal)
+            : bVal.localeCompare(aVal);
+        case 'actualBA':
+          aVal = selectedCategory === 'hitting' ? a.actualBA : a.actualERA;
+          bVal = selectedCategory === 'hitting' ? b.actualBA : b.actualERA;
+          break;
+        case 'xBA':
+          aVal = selectedCategory === 'hitting' ? a.xBA : a.xERA;
+          bVal = selectedCategory === 'hitting' ? b.xBA : b.xERA;
+          break;
+        case 'diff':
+          aVal = a.diff;
+          bVal = b.diff;
+          break;
+        case 'hardHitPct':
+          aVal = a.hardHitPct || 0;
+          bVal = b.hardHitPct || 0;
+          break;
+        case 'barrelPct':
+          aVal = a.barrelPct || 0;
+          bVal = b.barrelPct || 0;
+          break;
+        case 'exitVelo':
+          aVal = a.exitVelo || 0;
+          bVal = b.exitVelo || 0;
+          break;
+        case 'whiffPct':
+          aVal = a.whiffPct || 0;
+          bVal = b.whiffPct || 0;
+          break;
+        case 'kRate':
+          aVal = a.kRate || 0;
+          bVal = b.kRate || 0;
+          break;
+        default:
+          return 0;
+      }
+      
+      return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+    });
+    
+    return sorted;
+  }, [expectedStats, sortColumn, sortDirection, selectedCategory]);
+
+  // Handle column header click for sorting
+  const handleSort = (column) => {
+    if (sortColumn === column) {
+      // Toggle direction if same column
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // New column, default to descending
+      setSortColumn(column);
+      setSortDirection('desc');
+    }
+  };
+
+  // Reset sort to default when category changes
+  useEffect(() => {
+    setSortColumn('actualBA');
+    setSortDirection('desc');
+  }, [selectedCategory]);
+
+  // Load expected stats when projections tab is opened
+  useEffect(() => {
+    if (activeTab === 'projections' && expectedStats.length === 0 && !expectedStatsLoading) {
+      setExpectedStatsLoading(true);
+      getExpectedStats(currentSeason, selectedCategory).then(data => {
+        setExpectedStats(data);
+        setExpectedStatsLoading(false);
+      });
+    }
+  }, [activeTab, selectedCategory]);
+
   // Calculate stats for display
   const currentSeasonLeader = seasonLeaders[currentSeason]?.[0];
   const maxHistoricalRecord = historicalRecords[0];
@@ -266,6 +355,21 @@ function App() {
           >
             Active Trends
           </button>
+          <button 
+            onClick={() => {
+              setActiveTab('projections');
+              if (expectedStats.length === 0 && !expectedStatsLoading) {
+                setExpectedStatsLoading(true);
+                getExpectedStats(currentSeason, selectedCategory).then(data => {
+                  setExpectedStats(data);
+                  setExpectedStatsLoading(false);
+                });
+              }
+            }}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'projections' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+          >
+            Expected Stats
+          </button>
         </div>
       </header>
 
@@ -325,8 +429,8 @@ function App() {
               <table className="w-full text-left">
                 <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider">
                   <tr>
-                    <th className="px-6 py-4">Rank</th>
-                    <th className="px-6 py-4">Player</th>
+                    <th className="px-6 py-4 sticky left-0 z-20 bg-slate-50 dark:bg-slate-800/50">Rank</th>
+                    <th className="px-6 py-4 sticky left-[80px] z-20 bg-slate-50 dark:bg-slate-800/50">Player</th>
                     <th className="px-6 py-4 text-center">{currentStat.abbr}</th>
                     <th className="px-6 py-4">Team</th>
                     <th className="px-6 py-4">Logo</th>
@@ -337,8 +441,8 @@ function App() {
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                   {filteredHistory.map((row) => (
                     <tr key={`${row.player}-${row.year}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                      <td className="px-6 py-4 font-bold text-slate-400">{row.rank}</td>
-                      <td className="px-6 py-4 font-semibold">
+                      <td className="px-6 py-4 font-bold text-slate-400 sticky left-0 z-10 bg-white dark:bg-slate-900">{row.rank}</td>
+                      <td className="px-6 py-4 font-semibold sticky left-[80px] z-10 bg-white dark:bg-slate-900">
                         {row.personId ? (
                           <a 
                             href={`https://www.mlb.com/player/${row.personId}`}
@@ -541,11 +645,6 @@ function App() {
                   <div className="relative h-48 w-full flex items-end gap-2 mb-8 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl p-4 pt-8">
                     {data.map((d, i) => (
                       <div key={i} className="flex-1 h-full flex flex-col justify-end group relative">
-                        {/* Data Label */}
-                        <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-bold text-slate-700 dark:text-slate-300">
-                          {formatStatValue(d.statValue, selectedStat)}
-                        </div>
-                        
                         {/* The Bar */}
                         <div 
                           style={{ height: `${Math.max((d.statValue / maxStat) * 100, 2)}%` }}
@@ -553,8 +652,13 @@ function App() {
                             name === 'Aaron Judge' ? 'bg-blue-500' : 
                             name === 'Shohei Ohtani' ? 'bg-red-500' : 
                             'bg-indigo-500'
-                          } group-hover:brightness-110 group-hover:shadow-md`}
-                        ></div>
+                          } group-hover:brightness-110 group-hover:shadow-md relative`}
+                        >
+                          {/* Data Label - positioned on top of bar */}
+                          <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-xs font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                            {formatStatValue(d.statValue, selectedStat)}
+                          </div>
+                        </div>
                         
                         {/* Tooltip */}
                         <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] px-2 py-1 rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
@@ -595,6 +699,250 @@ function App() {
           </div>
           );
         })()}
+
+        {/* Tab Content: Expected Stats (Projections) */}
+        {activeTab === 'projections' && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold flex items-center gap-2">
+                <Target className="text-violet-500" size={24} /> 
+                Expected Statistics: <span className="text-violet-600">{selectedCategory === 'hitting' ? 'Batting' : 'Pitching'}</span>
+              </h2>
+              <button
+                onClick={() => {
+                  setExpectedStatsLoading(true);
+                  getExpectedStats(currentSeason, selectedCategory).then(data => {
+                    setExpectedStats(data);
+                    setExpectedStatsLoading(false);
+                  });
+                }}
+                className="px-4 py-2 bg-violet-500 hover:bg-violet-600 text-white rounded-lg font-semibold transition-colors"
+              >
+                Refresh Data
+              </button>
+            </div>
+
+            {expectedStatsLoading && (
+              <div className="text-center py-20">
+                <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-violet-500"></div>
+                <p className="mt-4 text-slate-500">Loading expected statistics...</p>
+              </div>
+            )}
+
+            {!expectedStatsLoading && (
+              <>
+                <div className="bg-violet-50 dark:bg-violet-900/10 p-4 rounded-xl flex items-start gap-3 border border-violet-100 dark:border-violet-900/30">
+                  <Info className="text-violet-500 mt-0.5" size={20} />
+                  <p className="text-sm text-violet-800 dark:text-violet-300">
+                    Expected statistics use quality of contact metrics (exit velocity, launch angle, barrel rate) to predict what a player's stats "should be" based on their batted ball profile. Players performing above their expected stats may be getting lucky, while those below may be due for positive regression.
+                  </p>
+                </div>
+
+                <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl overflow-hidden border border-slate-200 dark:border-slate-800">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider">
+                        <tr>
+                          <th className="px-6 py-4 sticky left-0 z-20 bg-slate-50 dark:bg-slate-800/50">Rank</th>
+                          <th 
+                            className="px-6 py-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors select-none sticky left-[80px] z-20 bg-slate-50 dark:bg-slate-800/50"
+                            onClick={() => handleSort('player')}
+                          >
+                            <div className="flex items-center gap-2">
+                              Player
+                              {sortColumn === 'player' && (
+                                <span className="text-violet-500">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                              )}
+                            </div>
+                          </th>
+                          <th 
+                            className="px-6 py-4 text-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors select-none"
+                            onClick={() => handleSort('actualBA')}
+                          >
+                            <div className="flex items-center justify-center gap-2">
+                              Actual {selectedCategory === 'hitting' ? 'BA' : 'ERA'}
+                              {sortColumn === 'actualBA' && (
+                                <span className="text-violet-500">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                              )}
+                            </div>
+                          </th>
+                          <th 
+                            className="px-6 py-4 text-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors select-none"
+                            onClick={() => handleSort('xBA')}
+                          >
+                            <div className="flex items-center justify-center gap-2">
+                              Expected {selectedCategory === 'hitting' ? 'xBA' : 'xERA'}
+                              {sortColumn === 'xBA' && (
+                                <span className="text-violet-500">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                              )}
+                            </div>
+                          </th>
+                          <th 
+                            className="px-6 py-4 text-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors select-none"
+                            onClick={() => handleSort('diff')}
+                          >
+                            <div className="flex items-center justify-center gap-2">
+                              Diff
+                              {sortColumn === 'diff' && (
+                                <span className="text-violet-500">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                              )}
+                            </div>
+                          </th>
+                          {selectedCategory === 'hitting' ? (
+                            <>
+                              <th 
+                                className="px-6 py-4 text-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors select-none"
+                                onClick={() => handleSort('hardHitPct')}
+                              >
+                                <div className="flex items-center justify-center gap-2">
+                                  Hard Hit%
+                                  {sortColumn === 'hardHitPct' && (
+                                    <span className="text-violet-500">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                                  )}
+                                </div>
+                              </th>
+                              <th 
+                                className="px-6 py-4 text-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors select-none"
+                                onClick={() => handleSort('barrelPct')}
+                              >
+                                <div className="flex items-center justify-center gap-2">
+                                  Barrel%
+                                  {sortColumn === 'barrelPct' && (
+                                    <span className="text-violet-500">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                                  )}
+                                </div>
+                              </th>
+                              <th 
+                                className="px-6 py-4 text-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors select-none"
+                                onClick={() => handleSort('exitVelo')}
+                              >
+                                <div className="flex items-center justify-center gap-2">
+                                  Exit Velo
+                                  {sortColumn === 'exitVelo' && (
+                                    <span className="text-violet-500">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                                  )}
+                                </div>
+                              </th>
+                            </>
+                          ) : (
+                            <>
+                              <th 
+                                className="px-6 py-4 text-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors select-none"
+                                onClick={() => handleSort('whiffPct')}
+                              >
+                                <div className="flex items-center justify-center gap-2">
+                                  Whiff%
+                                  {sortColumn === 'whiffPct' && (
+                                    <span className="text-violet-500">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                                  )}
+                                </div>
+                              </th>
+                              <th 
+                                className="px-6 py-4 text-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors select-none"
+                                onClick={() => handleSort('kRate')}
+                              >
+                                <div className="flex items-center justify-center gap-2">
+                                  K%
+                                  {sortColumn === 'kRate' && (
+                                    <span className="text-violet-500">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                                  )}
+                                </div>
+                              </th>
+                            </>
+                          )}
+                          <th className="px-6 py-4 text-center">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                        {sortedExpectedStats.map((player, index) => (
+                          <tr key={`${player.player}-${index}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                            <td className="px-6 py-4 font-bold text-slate-400 sticky left-0 z-10 bg-white dark:bg-slate-900">#{index + 1}</td>
+                            <td className="px-6 py-4 font-semibold sticky left-[80px] z-10 bg-white dark:bg-slate-900">
+                              {player.personId ? (
+                                <a 
+                                  href={`https://www.mlb.com/player/${player.personId}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-slate-900 dark:text-white hover:text-violet-600 dark:hover:text-violet-400 transition-colors underline decoration-transparent hover:decoration-current"
+                                >
+                                  {player.player}
+                                </a>
+                              ) : (
+                                <span className="text-slate-900 dark:text-white">{player.player}</span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <span className="inline-block bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-3 py-1 rounded-full font-bold">
+                                {selectedCategory === 'hitting' ? player.actualBA.toFixed(3) : player.actualERA.toFixed(2)}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <span className="inline-block bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 px-3 py-1 rounded-full font-bold">
+                                {selectedCategory === 'hitting' ? player.xBA.toFixed(3) : player.xERA.toFixed(2)}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <span className={`inline-block px-3 py-1 rounded-full font-bold ${
+                                Math.abs(player.diff) < 0.01 
+                                  ? 'bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-300'
+                                  : player.diff > 0 
+                                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                                    : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+                              }`}>
+                                {player.diff > 0 ? '+' : ''}{player.diff.toFixed(3)}
+                              </span>
+                            </td>
+                            {selectedCategory === 'hitting' ? (
+                              <>
+                                <td className="px-6 py-4 text-center font-semibold">{player.hardHitPct.toFixed(1)}%</td>
+                                <td className="px-6 py-4 text-center font-semibold">{player.barrelPct.toFixed(1)}%</td>
+                                <td className="px-6 py-4 text-center font-semibold">{player.exitVelo.toFixed(1)} mph</td>
+                              </>
+                            ) : (
+                              <>
+                                <td className="px-6 py-4 text-center font-semibold">{player.whiffPct.toFixed(1)}%</td>
+                                <td className="px-6 py-4 text-center font-semibold">{player.kRate.toFixed(1)}%</td>
+                              </>
+                            )}
+                            <td className="px-6 py-4 text-center">
+                              <span className={`text-xs font-medium px-2 py-1 rounded ${
+                                player.luck === 'lucky' 
+                                  ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
+                                  : 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400'
+                              }`}>
+                                {player.luck === 'lucky' ? '🍀 Lucky' : '📉 Unlucky'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                  <h3 className="font-bold text-blue-900 dark:text-blue-300 mb-2 flex items-center gap-2">
+                    <BarChart3 size={18} />
+                    How to Use Expected Stats
+                  </h3>
+                  <ul className="text-sm text-blue-800 dark:text-blue-300 space-y-1 ml-6 list-disc">
+                    <li><strong>Positive Diff (Green):</strong> Player is overperforming their quality of contact - may regress</li>
+                    <li><strong>Negative Diff (Red):</strong> Player is underperforming their quality of contact - buy low candidate</li>
+                    <li><strong>High Hard Hit%/Barrel%:</strong> Indicates sustainable power and quality contact</li>
+                    <li><strong>High Exit Velocity:</strong> Strong batted ball authority, predictive of future success</li>
+                    {selectedCategory === 'pitching' && (
+                      <>
+                        <li><strong>High Whiff%:</strong> Indicates good pitch quality and strikeout potential</li>
+                        <li><strong>High K%:</strong> Strong strikeout rate, predictive of success</li>
+                      </>
+                    )}
+                  </ul>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
 
       </main>
 
